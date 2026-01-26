@@ -18,7 +18,7 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
 YOUTUBE_CHANNELS = {
-    "InvestireBiz": "https://www.youtube.com/@InvestireBiz/video"
+    "InvestireBiz": "https://www.youtube.com/@InvestireBiz/videos"
 }
 
 BACKFILL_START = dt.date(2026, 1, 1)
@@ -96,7 +96,7 @@ def process_youtube_channel(channel_name, channel_url):
 
     log(f"Scansione feed canale: {channel_name}...")
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl: # type: ignore
         try:
             info = ydl.extract_info(channel_url, download=False)
             entries = info.get('entries', [])
