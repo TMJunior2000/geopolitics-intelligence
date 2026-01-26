@@ -18,8 +18,7 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
 YOUTUBE_CHANNELS = {
-    "InvestireBiz": "https://www.youtube.com/@InvestireBiz",
-    "MarketMind": "https://www.youtube.com/@MarketMind" 
+    "InvestireBiz": "https://www.youtube.com/@InvestireBiz/video"
 }
 
 BACKFILL_START = dt.date(2026, 1, 1)
