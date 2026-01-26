@@ -1,5 +1,1 @@
-echo "venv/" >> .gitignore
-echo ".env" >> .gitignore
-echo "__pycache__/" >> .gitignore
-echo "*.mp3" >> .gitignore
-echo "*.m4a" >> .gitignore
+.env
