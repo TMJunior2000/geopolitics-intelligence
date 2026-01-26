@@ -1,13 +1,11 @@
 import os
 import sys
 import json
-import tempfile
 import re
 import datetime as dt
 from typing import List
 import yt_dlp
-import requests
-import assemblyai as aai
+from youtube_transcript_api import YouTubeTranscriptApi
 from google import genai
 from google.genai import types
 from supabase import create_client, Client
@@ -19,10 +17,9 @@ from datetime import datetime, timezone
 MODE = os.getenv("MODE", "LIVE").upper()
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-ASSEMBLYAI_KEY = os.environ.get("ASSEMBLYAI_KEY")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
-# Rimosso /videos per evitare errori se la tab non esiste
+# URL dei canali
 YOUTUBE_CHANNELS = {
     "InvestireBiz": "https://www.youtube.com/@InvestireBiz",
     "MarketMind": "https://www.youtube.com/@MarketMind" 
@@ -30,8 +27,6 @@ YOUTUBE_CHANNELS = {
 
 BACKFILL_START = dt.date(2026, 1, 1)
 BACKFILL_END = dt.date(2026, 1, 25)
-
-os.makedirs("transcripts", exist_ok=True)
 
 # =========================
 # INIT CLIENTS
@@ -42,7 +37,6 @@ if not GOOGLE_API_KEY or not SUPABASE_URL or not SUPABASE_KEY:
 
 try:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-    aai.settings.api_key = ASSEMBLYAI_KEY
     gemini_client = genai.Client(api_key=GOOGLE_API_KEY)
 except Exception as e:
     raise RuntimeError(f"Errore inizializzazione var. d'ambiente: {e}")
@@ -71,134 +65,93 @@ def get_or_create_source(name, type_, base_url):
     new_data = getattr(new_res, 'data', [])
     return new_data[0]["id"] if new_data else None
 
-def clean_vtt(vtt_text: str) -> str:
-    lines = vtt_text.splitlines()
-    clean_lines = []
-    for line in lines:
-        if "-->" in line or line.startswith("WEBVTT") or not line.strip():
-            continue
-        line = re.sub(r'<[^>]+>', '', line).strip()
-        if line and (not clean_lines or line != clean_lines[-1]):
-            clean_lines.append(line)
-    return " ".join(clean_lines)
-
 # =========================
 # YOUTUBE LOGIC
 # =========================
 def fetch_youtube_videos(channel_url) -> List[dict]:
-    # Configurazione anti-bot aggressiva
+    # Configurazione "Stealth"
+    # Usiamo 'extract_flat' per prendere solo i metadati dalla playlist/feed
+    # SENZA aprire la pagina del singolo video (che triggera il blocco)
     ydl_opts = {
         'quiet': True,
-        'no_warnings': True,
-        'extract_flat': False, # Necessario False per avere i metadati completi subito
-        'playlist_items': '1-5', # Scarica solo gli ultimi 5 video per evitare blocchi massivi
-        'skip_download': True,
-        'writesubtitles': True,
-        'writeautomaticsub': True,
-        'subtitleslangs': ['it'],
-        'subtitlesformat': 'vtt',
-        'outtmpl': {'default': 'transcripts/%(id)s.%(ext)s'},
-        
-        # Trucco per bypassare "Sign in to confirm you’re not a bot"
-        'extractor_args': {
-            'youtube': {
-                'player_client': ['android', 'web'],
-                'skip': ['dash', 'hls']
-            }
-        },
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        }
+        'extract_flat': True,  # FONDAMENTALE: Non scarica info video, solo lista
+        'playlist_items': '1-10', # Controlliamo gli ultimi 10 video
+        'ignoreerrors': True,
     }
 
     videos = []
-    # Riprova in caso di errore
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Scarica info canale
-            info = ydl.extract_info(channel_url, download=True)
+            info = ydl.extract_info(channel_url, download=False)
             
-            # Gestione caso "entries" (playlist/canale) o singolo video
             entries = info.get('entries', [])
-            if not entries and 'title' in info:
-                entries = [info]
+            if not entries:
+                log(f"Nessun video trovato per {channel_url}")
+                return []
 
             for video in entries:
                 if not video: continue
                 
-                # Gestione data: yt-dlp a volte torna stringhe diverse
+                # In modalità flat, a volte mancano alcuni campi, gestiamo i fallback
+                video_id = video.get('id')
+                title = video.get('title')
+                url = video.get('url') or f"https://www.youtube.com/watch?v={video_id}"
+                
+                # Gestione Data: extract_flat a volte non da la data esatta.
+                # Se manca, assumiamo sia oggi per LIVE o saltiamo per BACKFILL se siamo incerti
+                # Tuttavia, spesso 'upload_date' c'è nel feed JSON iniziale.
                 raw_date = video.get('upload_date')
-                if not raw_date:
+                
+                if raw_date:
+                    dt_video = datetime.strptime(raw_date, "%Y%m%d").date()
+                else:
+                    # Fallback: Se non c'è la data, nel dubbio processiamo solo se siamo in LIVE
+                    # e assumiamo sia recente. Rischioso ma necessario se l'API blocca.
+                    log(f"Data mancante per {title}, skip precauzionale.")
                     continue
-                    
-                dt_video = datetime.strptime(raw_date, "%Y%m%d").date()
-                now = datetime.now(timezone.utc).date()
 
+                # FILTRI DATE
+                now = datetime.now(timezone.utc).date()
                 if MODE == "LIVE":
-                    if dt_video != now: continue
+                    # Accetta video di oggi o ieri (per fuso orario)
+                    if (now - dt_video).days > 1: continue
                 else: 
                     if not (BACKFILL_START <= dt_video <= BACKFILL_END):
                         continue
 
-                vtt_file = None
-                expected_vtt = f"transcripts/{video['id']}.it.vtt"
-                if os.path.exists(expected_vtt):
-                    vtt_file = expected_vtt
-
                 videos.append({
-                    'id': video.get('id'),
-                    'title': video.get('title'),
-                    'url': video.get('webpage_url'),
+                    'id': video_id,
+                    'title': title,
+                    'url': url,
                     'published_at': dt_video,
-                    'transcript_path': vtt_file
                 })
-                log(f"Trovato video: {video.get('title')} ({dt_video})")
                 
     except Exception as e:
-        log(f"Errore nel fetch YouTube per {channel_url}: {e}")
+        log(f"Errore nel fetch lista YouTube per {channel_url}: {e}")
         
     return videos
 
-def transcribe_audio(v_info: dict) -> str:
-    if v_info['transcript_path'] and os.path.exists(v_info['transcript_path']):
-        log(f"Utilizzo sottotitoli locali per {v_info['title']}")
-        with open(v_info['transcript_path'], 'r', encoding='utf-8') as f:
-            text = clean_vtt(f.read())
-        try:
-            os.remove(v_info['transcript_path'])
-        except: pass
-        return text
-
-    log(f"Nessun sottotitolo per {v_info['title']}, avvio AssemblyAI...")
-    with tempfile.TemporaryDirectory() as tmp:
-        audio_opts = {
-            "format": "m4a/bestaudio/best",
-            "outtmpl": f"{tmp}/audio.%(ext)s",
-            "quiet": True,
-            # Anche qui, configurazione anti-bot
-            'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
-            'http_headers': {'User-Agent': 'Mozilla/5.0'}
-        }
-        try:
-            with yt_dlp.YoutubeDL(audio_opts) as ydl:
-                ydl.download([v_info['url']])
-            
-            audio_files = [f for f in os.listdir(tmp) if not f.startswith('.')]
-            if not audio_files: return ""
-            
-            audio_path = os.path.join(tmp, audio_files[0])
-            transcriber = aai.Transcriber()
-            transcript = transcriber.transcribe(audio_path)
-
-            if not transcript.text: return ""
-            return transcript.text
-        except Exception as e:
-            log(f"Errore download/trascrizione audio: {e}")
-            return ""
+def get_transcript_text(video_id: str) -> str:
+    """
+    Usa youtube-transcript-api invece di yt-dlp/audio download.
+    Molto più leggero e meno soggetto a blocchi IP sui data center.
+    """
+    try:
+        # Cerca prima in Italiano, poi Inglese
+        transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['it', 'en'])
+        
+        # Concatena il testo
+        full_text = " ".join([item['text'] for item in transcript_list])
+        return full_text
+        
+    except Exception as e:
+        # Se fallisce (es. sottotitoli disabilitati o blocco estremo)
+        log(f"Impossibile ottenere trascrizione per {video_id}: {e}")
+        return ""
 
 def analyze_with_gemini(text: str) -> dict:
     if not text or len(text) < 50:
-        return {"summary": "Contenuto insufficiente/Non disponibile", "risk_level": "LOW", "countries_involved": [], "keywords": []}
+        return {"summary": "Contenuto non disponibile/No audio", "risk_level": "LOW", "countries_involved": [], "keywords": []}
 
     prompt = """
     Sei un analista geopolitico esperto. Analizza la trascrizione e restituisci SOLO JSON valido:
@@ -226,10 +179,12 @@ def analyze_with_gemini(text: str) -> dict:
 # PROCESSORS
 # =========================
 def process_youtube():
-    for name, url in YOUTUBE_CHANNELS.items():
+    for name, channel_url in YOUTUBE_CHANNELS.items():
         try:
-            source_id = get_or_create_source(name, "youtube", url)
-            videos = fetch_youtube_videos(url)
+            log(f"Scansione canale: {name}")
+            source_id = get_or_create_source(name, "youtube", channel_url)
+            videos = fetch_youtube_videos(channel_url)
+            log(f"Trovati {len(videos)} video potenziali per {name}")
 
             for v in videos:
                 if url_exists(v["url"]):
@@ -237,18 +192,28 @@ def process_youtube():
                     continue
 
                 log(f"Elaborazione: {v['title']}")
-                text = transcribe_audio(v)
-                analysis = analyze_with_gemini(text)
+                
+                # 1. Ottieni Trascrizione (Metodo API Sottotitoli)
+                text = get_transcript_text(v['id'])
+                
+                if not text:
+                    log(f"Skipping analisi AI per mancanza testo: {v['title']}")
+                    analysis = {"summary": "Trascrizione non disponibile", "risk_level": "LOW"}
+                else:
+                    # 2. Analisi AI
+                    analysis = analyze_with_gemini(text)
 
+                # 3. Salvataggio
                 supabase.table("intelligence_feed").insert({
                     "source_id": source_id,
                     "title": v["title"],
                     "url": v["url"],
-                    "published_at": v["published_at"].isoformat(), # Data convertita in stringa
+                    "published_at": v["published_at"].isoformat(),
                     "content": text,
                     "analysis": analysis,
                     "raw_metadata": {"id": v["id"]}
                 }).execute()
+                
         except Exception as e:
             log(f"Errore processamento canale {name}: {e}")
 
@@ -256,11 +221,10 @@ def process_calendar():
     source_id = get_or_create_source("Investing.com Calendar", "calendar", "https://www.investing.com/economic-calendar/")
     
     events = []
-    # FIX: Convertiamo le date in stringa subito per renderle JSON serializable
     if MODE == "LIVE":
         events.append({
             "title": "Daily Market Update", 
-            "date": dt.date.today().isoformat(), # STRINGA!
+            "date": dt.date.today().isoformat(),
             "impact": "MEDIUM", 
             "country": "Global"
         })
@@ -268,7 +232,7 @@ def process_calendar():
         for d in range(1, 26):
             events.append({
                 "title": f"Historical Event {d} Jan", 
-                "date": dt.date(2026, 1, d).isoformat(), # STRINGA!
+                "date": dt.date(2026, 1, d).isoformat(),
                 "impact": "LOW", 
                 "country": "IT"
             })
@@ -281,10 +245,10 @@ def process_calendar():
             "source_id": source_id,
             "title": e["title"],
             "url": fake_url,
-            "published_at": e["date"], # Già stringa
+            "published_at": e["date"],
             "content": f"Event data: {e}",
             "analysis": {"impact": e["impact"]},
-            "raw_metadata": e # Ora 'e' contiene solo stringhe/tipi semplici, è serializzabile
+            "raw_metadata": e
         }).execute()
 
 # =========================
