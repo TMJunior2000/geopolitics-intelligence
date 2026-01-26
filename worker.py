@@ -1,11 +1,9 @@
 import os
 import sys
 import json
-import re
 import datetime as dt
 from typing import List
 import yt_dlp
-from youtube_transcript_api import YouTubeTranscriptApi
 from google import genai
 from google.genai import types
 from supabase import create_client, Client
@@ -21,25 +19,27 @@ GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
 # URL dei canali
 YOUTUBE_CHANNELS = {
-    "InvestireBiz": "https://www.youtube.com/@InvestireBiz",
-    "MarketMind": "https://www.youtube.com/@MarketMind" 
+    "InvestireBiz": "https://www.youtube.com/@InvestireBiz"
 }
 
+# Date per backfill
 BACKFILL_START = dt.date(2026, 1, 1)
 BACKFILL_END = dt.date(2026, 1, 25)
+
+# Assicuriamo che la cartella esista
+os.makedirs("transcripts", exist_ok=True)
 
 # =========================
 # INIT CLIENTS
 # =========================
-
 if not GOOGLE_API_KEY or not SUPABASE_URL or not SUPABASE_KEY:
-    raise ValueError("Mancano delle variabili d'ambiente")
+    raise ValueError("Mancano delle variabili d'ambiente critiche")
 
 try:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     gemini_client = genai.Client(api_key=GOOGLE_API_KEY)
 except Exception as e:
-    raise RuntimeError(f"Errore inizializzazione var. d'ambiente: {e}")
+    raise RuntimeError(f"Errore inizializzazione client: {e}")
 
 # =========================
 # UTILS
@@ -66,92 +66,127 @@ def get_or_create_source(name, type_, base_url):
     return new_data[0]["id"] if new_data else None
 
 # =========================
-# YOUTUBE LOGIC
+# CORE LOGIC (Adattata dal tuo script locale)
 # =========================
-def fetch_youtube_videos(channel_url) -> List[dict]:
-    # Configurazione "Stealth"
-    # Usiamo 'extract_flat' per prendere solo i metadati dalla playlist/feed
-    # SENZA aprire la pagina del singolo video (che triggera il blocco)
+def fetch_and_process_youtube(channel_name, channel_url):
+    source_id = get_or_create_source(channel_name, "youtube", channel_url)
+    
+    # OPZIONI IDENTICHE AL TUO SCRIPT LOCALE
+    # Ma adattate per Linux (Deno è nel PATH)
     ydl_opts = {
         'quiet': True,
-        'extract_flat': True,  # FONDAMENTALE: Non scarica info video, solo lista
-        'playlist_items': '1-10', # Controlliamo gli ultimi 10 video
+        'no_warnings': True,
         'ignoreerrors': True,
+        'extract_flat': False, # IMPORTANTE: Scarica i metadati completi subito
+        
+        # Usa 'deno' dal sistema (installato via scraper.yml) per bypassare i bot check
+        # Nota: Su linux basta dire che il path è 'deno' se è nel PATH globale
+        'js_runtimes': {
+            'deno': {'path': 'deno'} 
+        },
+        
+        'playlist_items': '1-10', # Controlliamo gli ultimi 10 video
+        'skip_download': True,
+        'writesubtitles': True,             
+        'writeautomaticsub': True,          
+        'subtitleslangs': ['it'],     
+        'subtitlesformat': 'vtt',    
+        'outtmpl': {'default': 'transcripts/%(id)s.%(ext)s'},       
     }
 
-    videos = []
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(channel_url, download=False)
-            
+    log(f"Avvio scansione canale: {channel_name}...")
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        try:
+            info = ydl.extract_info(channel_url, download=True)
             entries = info.get('entries', [])
+
             if not entries:
-                log(f"Nessun video trovato per {channel_url}")
-                return []
+                log(f"Nessun video trovato nel feed di {channel_name}")
+                return
 
             for video in entries:
-                if not video: continue
-                
-                # In modalità flat, a volte mancano alcuni campi, gestiamo i fallback
-                video_id = video.get('id')
-                title = video.get('title')
-                url = video.get('url') or f"https://www.youtube.com/watch?v={video_id}"
-                
-                # Gestione Data: extract_flat a volte non da la data esatta.
-                # Se manca, assumiamo sia oggi per LIVE o saltiamo per BACKFILL se siamo incerti
-                # Tuttavia, spesso 'upload_date' c'è nel feed JSON iniziale.
-                raw_date = video.get('upload_date')
-                
-                if raw_date:
-                    dt_video = datetime.strptime(raw_date, "%Y%m%d").date()
-                else:
-                    # Fallback: Se non c'è la data, nel dubbio processiamo solo se siamo in LIVE
-                    # e assumiamo sia recente. Rischioso ma necessario se l'API blocca.
-                    log(f"Data mancante per {title}, skip precauzionale.")
-                    continue
+                if video is None: continue
 
-                # FILTRI DATE
+                # 1. Gestione Data
+                raw_date = video.get('upload_date')
+                if not raw_date: continue
+                
+                dt_video = datetime.strptime(raw_date, "%Y%m%d").date()
                 now = datetime.now(timezone.utc).date()
+
+                # Filtro DATE
                 if MODE == "LIVE":
-                    # Accetta video di oggi o ieri (per fuso orario)
+                    # Accetta video di oggi o ieri
                     if (now - dt_video).days > 1: continue
                 else: 
-                    if not (BACKFILL_START <= dt_video <= BACKFILL_END):
-                        continue
+                    # Backfill range
+                    if not (BACKFILL_START <= dt_video <= BACKFILL_END): continue
 
-                videos.append({
-                    'id': video_id,
-                    'title': title,
-                    'url': url,
-                    'published_at': dt_video,
-                })
-                
-    except Exception as e:
-        log(f"Errore nel fetch lista YouTube per {channel_url}: {e}")
-        
-    return videos
+                # Controllo Duplicati DB
+                video_url = video.get('webpage_url')
+                if url_exists(video_url):
+                    log(f"Saltato (già presente): {video.get('title')}")
+                    continue
 
-def get_transcript_text(video_id: str) -> str:
-    """
-    Usa youtube-transcript-api invece di yt-dlp/audio download.
-    Molto più leggero e meno soggetto a blocchi IP sui data center.
-    """
-    try:
-        # Cerca prima in Italiano, poi Inglese
-        transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['it', 'en'])
-        
-        # Concatena il testo
-        full_text = " ".join([item['text'] for item in transcript_list])
-        return full_text
-        
-    except Exception as e:
-        # Se fallisce (es. sottotitoli disabilitati o blocco estremo)
-        log(f"Impossibile ottenere trascrizione per {video_id}: {e}")
-        return ""
+                log(f"Elaborazione: {video.get('title')} ({dt_video})")
+
+                # 2. Recupero Percorso Sottotitoli (Metodo Robusto)
+                transcript_path = None
+                requested_subtitles = video.get('requested_subtitles')
+                if requested_subtitles and 'it' in requested_subtitles:
+                    transcript_path = requested_subtitles['it'].get('filepath')
+
+                # 3. Lettura Contenuto
+                full_text = ""
+                if transcript_path and os.path.exists(transcript_path):
+                    try:
+                        with open(transcript_path, 'r', encoding='utf-8') as f:
+                            # Pulizia base VTT
+                            raw_content = f.read()
+                            lines = raw_content.splitlines()
+                            clean_lines = []
+                            for line in lines:
+                                if "-->" in line or line.startswith("WEBVTT") or not line.strip(): continue
+                                # Rimuovi tag <c>...</c> ecc
+                                import re
+                                line = re.sub(r'<[^>]+>', '', line).strip()
+                                if line and (not clean_lines or line != clean_lines[-1]):
+                                    clean_lines.append(line)
+                            full_text = " ".join(clean_lines)
+                            
+                        # Pulizia file
+                        os.remove(transcript_path)
+                    except Exception as e:
+                        log(f"Errore lettura VTT: {e}")
+
+                # Se non abbiamo sottotitoli, usiamo la descrizione
+                if not full_text:
+                    full_text = video.get('description', '')
+                    log("Usata descrizione video (sottotitoli mancanti)")
+
+                # 4. Analisi AI
+                analysis = analyze_with_gemini(full_text)
+
+                # 5. Salvataggio su Supabase
+                supabase.table("intelligence_feed").insert({
+                    "source_id": source_id,
+                    "title": video.get('title'),
+                    "url": video_url,
+                    "published_at": dt_video.isoformat(),
+                    "content": full_text,
+                    "analysis": analysis,
+                    "raw_metadata": {"id": video.get('id')}
+                }).execute()
+
+                log(f"✅ Salvato: {video.get('title')}")
+
+        except Exception as e:
+            log(f"Errore critico durante scansione {channel_name}: {e}")
 
 def analyze_with_gemini(text: str) -> dict:
     if not text or len(text) < 50:
-        return {"summary": "Contenuto non disponibile/No audio", "risk_level": "LOW", "countries_involved": [], "keywords": []}
+        return {"summary": "Contenuto non disponibile", "risk_level": "LOW", "countries_involved": [], "keywords": []}
 
     prompt = """
     Sei un analista geopolitico esperto. Analizza la trascrizione e restituisci SOLO JSON valido:
@@ -174,48 +209,6 @@ def analyze_with_gemini(text: str) -> dict:
     except Exception as e:
         log(f"Errore Gemini: {e}")
         return {"summary": "Errore analisi AI", "risk_level": "LOW"}
-
-# =========================
-# PROCESSORS
-# =========================
-def process_youtube():
-    for name, channel_url in YOUTUBE_CHANNELS.items():
-        try:
-            log(f"Scansione canale: {name}")
-            source_id = get_or_create_source(name, "youtube", channel_url)
-            videos = fetch_youtube_videos(channel_url)
-            log(f"Trovati {len(videos)} video potenziali per {name}")
-
-            for v in videos:
-                if url_exists(v["url"]):
-                    log(f"Saltato (esistente): {v['title']}")
-                    continue
-
-                log(f"Elaborazione: {v['title']}")
-                
-                # 1. Ottieni Trascrizione (Metodo API Sottotitoli)
-                text = get_transcript_text(v['id'])
-                
-                if not text:
-                    log(f"Skipping analisi AI per mancanza testo: {v['title']}")
-                    analysis = {"summary": "Trascrizione non disponibile", "risk_level": "LOW"}
-                else:
-                    # 2. Analisi AI
-                    analysis = analyze_with_gemini(text)
-
-                # 3. Salvataggio
-                supabase.table("intelligence_feed").insert({
-                    "source_id": source_id,
-                    "title": v["title"],
-                    "url": v["url"],
-                    "published_at": v["published_at"].isoformat(),
-                    "content": text,
-                    "analysis": analysis,
-                    "raw_metadata": {"id": v["id"]}
-                }).execute()
-                
-        except Exception as e:
-            log(f"Errore processamento canale {name}: {e}")
 
 def process_calendar():
     source_id = get_or_create_source("Investing.com Calendar", "calendar", "https://www.investing.com/economic-calendar/")
@@ -256,9 +249,15 @@ def process_calendar():
 # =========================
 if __name__ == "__main__":
     log(f"--- WORKER START (MODE={MODE}) ---")
-    try:
-        process_youtube()
-        process_calendar()
-        log("--- WORKER DONE ---")
-    except Exception as e:
-        log(f"ERRORE CRITICO GLOBALE: {e}")
+    
+    # Processa YouTube
+    for name, url in YOUTUBE_CHANNELS.items():
+        fetch_and_process_youtube(name, url)
+        
+    ## Processa Calendario
+    #try:
+    #    process_calendar()
+    #except Exception as e:
+    #    log(f"Errore calendario: {e}")
+
+    log("--- WORKER DONE ---")
