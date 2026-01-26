@@ -101,7 +101,7 @@ def fetch_youtube_videos(channel_url) -> List[dict]:
         'subtitleslangs': ['it'],
         'subtitlesformat': 'vtt',
         'outtmpl': {'default': 'transcripts/%(id)s.%(ext)s'},
-        "js_runtimes": {"deno": "/usr/bin/deno"}
+        "js_runtimes": {"deno": "/opt/hostedtoolcache/deno/1.46.3/x64"}
     }
 
     videos = []
@@ -158,7 +158,7 @@ def transcribe_audio(v_info: dict) -> str:
             "format": "m4a/bestaudio/best",
             "outtmpl": f"{tmp}/audio.%(ext)s",
             "quiet": True,
-            "js_runtimes": {"deno": "/usr/bin/deno"}
+            "js_runtimes": {"deno": "/opt/hostedtoolcache/deno/1.46.3/x64"}
         }
         with yt_dlp.YoutubeDL(audio_opts) as ydl: # type: ignore
             ydl.download([v_info['url']])
