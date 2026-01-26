@@ -68,7 +68,7 @@ def get_or_create_source(name, type_, base_url):
     new_res = supabase.table("sources").insert({
         "name": name,
         "type": type_,
-        "url": base_url 
+        "base_url": base_url 
     }).execute()
     new_data = getattr(new_res, 'data', [])
     return new_data[0]["id"] if new_data else None
