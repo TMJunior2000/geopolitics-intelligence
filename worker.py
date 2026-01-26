@@ -16,7 +16,6 @@ from datetime import datetime, timezone
 # =========================
 # CONFIG
 # =========================
-# Caricamento variabili d'ambiente (per GitHub Actions o .env locale)
 MODE = os.getenv("MODE", "LIVE").upper()
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
@@ -28,11 +27,9 @@ YOUTUBE_CHANNELS = {
     "MarketMind": "https://www.youtube.com/@MarketMind/videos"
 }
 
-# Range per la modalità BACKFILL
 BACKFILL_START = dt.date(2026, 1, 1)
 BACKFILL_END = dt.date(2026, 1, 25)
 
-# Assicuriamoci che la cartella per i sottotitoli esista
 os.makedirs("transcripts", exist_ok=True)
 
 # =========================
@@ -74,13 +71,11 @@ def get_or_create_source(name, type_, base_url):
     return new_data[0]["id"] if new_data else None
 
 def clean_vtt(vtt_text: str) -> str:
-    """Pulisce il file VTT rimuovendo timestamp e tag HTML."""
     lines = vtt_text.splitlines()
     clean_lines = []
     for line in lines:
         if "-->" in line or line.startswith("WEBVTT") or not line.strip():
             continue
-        # Rimuove tag tipo <c> o </c>
         line = re.sub(r'<[^>]+>', '', line).strip()
         if line and (not clean_lines or line != clean_lines[-1]):
             clean_lines.append(line)
@@ -101,11 +96,11 @@ def fetch_youtube_videos(channel_url) -> List[dict]:
         'subtitleslangs': ['it'],
         'subtitlesformat': 'vtt',
         'outtmpl': {'default': 'transcripts/%(id)s.%(ext)s'},
-        "js_runtimes": {"deno": "/opt/hostedtoolcache/deno/1.46.3/x64"}
+        # RIMOSSO: "js_runtimes": ... (yt-dlp lo trova da solo nel PATH)
     }
 
     videos = []
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl: # type: ignore
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
             info = ydl.extract_info(channel_url, download=True)
             entries = info.get('entries', [])
@@ -116,14 +111,12 @@ def fetch_youtube_videos(channel_url) -> List[dict]:
                 dt_video = datetime.strptime(raw_date, "%Y%m%d").date()
                 now = datetime.now(timezone.utc).date()
 
-                # LOGICA DI FILTRAGGIO
                 if MODE == "LIVE":
                     if dt_video != now: continue
-                else: # BACKFILL
+                else: 
                     if not (BACKFILL_START <= dt_video <= BACKFILL_END):
                         continue
 
-                # Cerca se yt-dlp ha scaricato un file sottotitoli
                 vtt_file = None
                 expected_vtt = f"transcripts/{video['id']}.it.vtt"
                 if os.path.exists(expected_vtt):
@@ -142,25 +135,22 @@ def fetch_youtube_videos(channel_url) -> List[dict]:
     return videos
 
 def transcribe_audio(v_info: dict) -> str:
-    """Tenta prima con i VTT locali, poi con AssemblyAI."""
-    # 1. Prova VTT locale
     if v_info['transcript_path'] and os.path.exists(v_info['transcript_path']):
         log(f"Utilizzo sottotitoli locali per {v_info['title']}")
         with open(v_info['transcript_path'], 'r', encoding='utf-8') as f:
             text = clean_vtt(f.read())
-        os.remove(v_info['transcript_path']) # Pulizia immediata
+        os.remove(v_info['transcript_path'])
         return text
 
-    # 2. Piano B: AssemblyAI
     log(f"Nessun sottotitolo per {v_info['title']}, avvio AssemblyAI...")
     with tempfile.TemporaryDirectory() as tmp:
         audio_opts = {
             "format": "m4a/bestaudio/best",
             "outtmpl": f"{tmp}/audio.%(ext)s",
             "quiet": True,
-            "js_runtimes": {"deno": "/opt/hostedtoolcache/deno/1.46.3/x64"}
+            # RIMOSSO: "js_runtimes": ...
         }
-        with yt_dlp.YoutubeDL(audio_opts) as ydl: # type: ignore
+        with yt_dlp.YoutubeDL(audio_opts) as ydl:
             ydl.download([v_info['url']])
         
         audio_files = [f for f in os.listdir(tmp) if not f.startswith('.')]
@@ -235,7 +225,6 @@ def process_calendar():
     if MODE == "LIVE":
         events.append({"title": "Daily Market Update", "date": dt.date.today(), "impact": "MEDIUM", "country": "Global"})
     else:
-        # Esempio backfill
         for d in range(1, 26):
             events.append({"title": f"Historical Event {d} Jan", "date": dt.date(2026, 1, d), "impact": "LOW", "country": "IT"})
 
