@@ -2,14 +2,14 @@ import os
 import json
 import time
 import uuid
+import requests
 import datetime as dt
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any, cast
 
 # --- LIBRERIE ---
-import yt_dlp
+# yt-dlp rimosso (non serve più, usiamo API esterne)
 import assemblyai as aai
-from youtube_transcript_api import YouTubeTranscriptApi
 from googleapiclient.discovery import build
 from google import genai
 from google.genai import types
@@ -35,87 +35,92 @@ aai.settings.api_key = ASSEMBLYAI_KEY
 YOUTUBE_CHANNELS = ["@InvestireBiz"]
 
 # =========================
-# STRATEGIA 1: AUDIO DOWNLOAD (POTENZIATO CON CURL_CFFI)
+# STRATEGIA AUDIO (VIA COBALT API)
 # =========================
 
-def download_audio_impersonate(video_url: str) -> Optional[str]:
+def download_audio_via_cobalt(video_url: str) -> Optional[str]:
     """
-    Scarica l'audio usando l'impersonificazione TLS (curl_cffi) come da documentazione.
-    Bypassa il blocco bot simulando un browser Chrome reale.
+    Usa istanze Cobalt pubbliche per scaricare l'audio MP3.
+    Questo bypassa totalmente il blocco IP di GitHub verso YouTube.
     """
-    temp_dir = "temp_audio"
-    if not os.path.exists(temp_dir): os.makedirs(temp_dir)
+    # Lista di istanze Cobalt (API)
+    instances = [
+        "https://api.cobalt.tools",
+        "https://co.wuk.sh",
+        "https://cobalt.xy24.eu.org",
+        "https://cobalt.q1.si"
+    ]
     
-    unique_name = f"audio_{uuid.uuid4()}"
-    output_path = os.path.join(temp_dir, unique_name)
-
-    ydl_opts = {
-        'format': 'bestaudio[ext=m4a]/bestaudio/best',
-        'outtmpl': output_path,
-        'quiet': True,
-        'noplaylist': True,
-        
-        # --- OPZIONI ANTI-BLOCCO DALLA DOCS ---
-        # Richiede pip install "yt-dlp[default,curl-cffi]"
-        'impersonate': 'chrome', 
-        
-        # Forza l'uso di client Android (spesso non bloccati)
-        'extractor_args': {
-            'youtube': {
-                'player_client': ['android', 'web_creator'],
-                'skip': ['hls', 'dash']
-            }
-        },
-        
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
 
-    try:
-        print(f"   🎙️  Tentativo download con impersonate='chrome'...")
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([video_url])
+    temp_dir = "temp_audio"
+    if not os.path.exists(temp_dir): os.makedirs(temp_dir)
+    filename = os.path.join(temp_dir, f"audio_{uuid.uuid4()}.mp3")
+
+    print("   🎙️  Richiedo Audio a Cobalt (External API)...")
+
+    for base_url in instances:
+        try:
+            # 1. Chiediamo a Cobalt di preparare l'MP3
+            payload = {
+                "url": video_url,
+                "vCodec": "h264",
+                "vQuality": "720",
+                "aFormat": "mp3", # Vogliamo MP3
+                "isAudioOnly": True # Solo audio
+            }
+            
+            api_url = f"{base_url}/api/json"
+            res = requests.post(api_url, json=payload, headers=headers, timeout=15)
+            
+            if res.status_code != 200:
+                continue
+
+            data = res.json()
+            
+            # 2. Otteniamo il link diretto per il download
+            download_url = data.get("url")
+            if not download_url:
+                continue
+                
+            # 3. Scarichiamo il file fisicamente
+            print(f"   ⬇️  Scaricamento MP3 da: {base_url}...")
+            mp3_res = requests.get(download_url, stream=True, timeout=30)
+            
+            if mp3_res.status_code == 200:
+                with open(filename, 'wb') as f:
+                    for chunk in mp3_res.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                
+                # Verifica che il file non sia vuoto
+                if os.path.getsize(filename) > 1000:
+                    return filename
         
-        final_path = output_path + ".mp3"
-        if os.path.exists(final_path) and os.path.getsize(final_path) > 1000:
-            return final_path
-        return None
-    except Exception as e:
-        print(f"   ❌ Errore yt-dlp impersonate: {e}")
-        return None
+        except Exception as e:
+            # print(f"Errore Cobalt {base_url}: {e}")
+            continue
+            
+    return None
 
 def transcribe_assemblyai(file_path: str) -> str:
+    """Invia l'audio ad AssemblyAI."""
     try:
+        print("   🤖 Invio audio ad AssemblyAI...")
         transcriber = aai.Transcriber()
         config = aai.TranscriptionConfig(language_code="it")
         transcript = transcriber.transcribe(file_path, config=config)
-        if transcript.status == aai.TranscriptStatus.error: return ""
-        return transcript.text if transcript.text else ""
-    except: return ""
-
-# =========================
-# STRATEGIA 2: SOTTOTITOLI (FALLBACK)
-# =========================
-
-def get_transcript_text(video_id: str) -> str:
-    try:
-        ytt_api = YouTubeTranscriptApi()
-        transcript_list = ytt_api.list(video_id)
-        try:
-            transcript = transcript_list.find_transcript(['it', 'en'])
-        except:
-            transcript = next(iter(transcript_list)).translate('it')
         
-        data = transcript.fetch()
-        text_parts = []
-        for item in data:
-            if isinstance(item, dict): text_parts.append(item.get('text', ''))
-            elif hasattr(item, 'text'): text_parts.append(item.text)
-        return " ".join(text_parts)
-    except: return ""
+        if transcript.status == aai.TranscriptStatus.error:
+            print(f"   ❌ Errore Trascrizione: {transcript.error}")
+            return ""
+        return transcript.text if transcript.text else ""
+    except Exception as e:
+        print(f"   ❌ Eccezione AssemblyAI: {e}")
+        return ""
 
 # =========================
 # UTILS & ANALISI
@@ -192,24 +197,26 @@ def process_video(video):
     full_text = ""
     used_method = "N/A"
 
-    # PRIORITÀ 1: DOWNLOAD AUDIO con IMPERSONATE
-    mp3_path = download_audio_impersonate(video['url'])
+    # 1. SCARICA AUDIO (Via Cobalt)
+    mp3_path = download_audio_via_cobalt(video['url'])
+    
     if mp3_path:
-        print("   🎙️  Audio scaricato (Impersonate)! Trascrivo...")
+        # TRASCRIZIONE
         full_text = transcribe_assemblyai(mp3_path)
         if full_text: 
-            used_method = "Audio (AssemblyAI)"
+            used_method = "Audio (Cobalt+Assembly)"
+        else:
+            print("   ⚠️ Trascrizione audio fallita.")
+        
+        # Pulizia file
+        if os.path.exists(mp3_path):
             os.remove(mp3_path)
-    
-    # PRIORITÀ 2: SOTTOTITOLI
-    if not full_text:
-        print("   ⚠️ Audio fallito. Provo Sottotitoli...")
-        full_text = get_transcript_text(video['id'])
-        if full_text: used_method = "Transcript"
+    else:
+        print("   ❌ Download Audio Cobalt fallito.")
 
-    # PRIORITÀ 3: DESCRIZIONE
+    # 2. FALLBACK DESCRIZIONE (Se Cobalt fallisce)
     if not full_text:
-        print("   ⚠️ Fallback finale: Uso Descrizione.")
+        print("   ⚠️ Fallback: Uso Descrizione.")
         full_text = f"TITOLO: {video['title']}\nDESCRIZIONE: {video['description']}"
         used_method = "Descrizione"
 

@@ -21,24 +21,11 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install FFmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
-
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          
-          # 1. INSTALLAZIONE SPECIFICA CON CURL-CFFI (Dalla documentazione)
-          # Questo abilita l'opzione --impersonate per bypassare i blocchi
-          pip install "yt-dlp[default,curl-cffi]"
-          
-          # 2. Altre librerie
-          pip install requests youtube-transcript-api assemblyai google-api-python-client google-genai supabase pandas
+          # Niente yt-dlp, usiamo API esterne!
+          pip install requests assemblyai google-api-python-client google-genai supabase pandas
 
       - name: Run worker
         env:
