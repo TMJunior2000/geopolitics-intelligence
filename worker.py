@@ -113,20 +113,25 @@ def download_audio_mp3(video_url: str) -> Optional[str]:
             f.write(env_cookies)
     
     ydl_opts = {
-        'format': 'bestaudio/best',
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
-        'outtmpl': output_path_no_ext,
-        'quiet': True,
-        'noplaylist': True,
-        # Opzioni Anti-Blocco
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'nocheckcertificate': True,
-        'ignoreerrors': True,
-    }
+            # CAMBIAMENTO 1: Chiediamo m4a invece di "bestaudio" generico
+            # Questo evita i formati HLS frammentati che danno errore 403
+            'format': 'bestaudio[ext=m4a]/bestaudio/best',
+            
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+            'outtmpl': output_path_no_ext,
+            'quiet': False, # Mettiamo False per vedere i log se fallisce
+            'noplaylist': True,
+            
+            # CAMBIAMENTO 2: User Agent di un iPhone (spesso meno bloccato dei PC)
+            'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
+            
+            'nocheckcertificate': True,
+            'ignoreerrors': True,
+        }
 
     # Se abbiamo i cookies, usiamoli!
     if cookies_path:
