@@ -9,9 +9,15 @@ class ApifyService:
     def get_transcript(self, video_url: str) -> str:
         """Scarica e pulisce la trascrizione gestendo le stranezze dell'Actor."""
         print(f"   ☁️ [APIFY] Richiesta per: {video_url}")
+
+        run_input = {
+        "video_ids": [video_url],
+        "subtitlesLanguage": "it",
+        "addVideoMetadata": False
+        }
         
         try:
-            run = self.client.actor(Config.APIFY_ACTOR_ID).call(run_input={"video_ids": [video_url]})
+            run = self.client.actor(Config.APIFY_ACTOR_ID).call(run_input=run_input)
             if not run: return ""
             
             full_text = []
