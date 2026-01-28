@@ -10,14 +10,15 @@ on:
 
 jobs:
   run-worker:
-    runs-on: ubuntu-latest
+    # ⚠️ FIX CRITICO: Usiamo ubuntu-22.04 perché ubuntu-latest (24.04)
+    # ha rimosso 'openresolv', rompendo l'installazione della VPN WARP.
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # --- 🛡️ ATTIVAZIONE VPN (CLOUDFLARE WARP) ---
-      # Questo cambia l'IP e sblocca YouTube
+      # 🛡️ VPN CLOUDFLARE (Funziona su ubuntu-22.04)
       - name: Setup WARP
         uses: fscarmen/warp-on-actions@v1.3
         with:
@@ -31,7 +32,6 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          # Usiamo la libreria ufficiale standard
           pip install youtube-transcript-api requests google-api-python-client google-genai supabase pandas
 
       - name: Run worker
