@@ -10,19 +10,12 @@ on:
 
 jobs:
   run-worker:
-    # 🛑 FERMO! NON CAMBIARE QUESTA RIGA.
-    # Serve la versione 22.04 perché la 24.04 non supporta la VPN WARP.
+    # Usiamo 22.04 per stabilità con i pacchetti Cloudflare
     runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
-
-      # 🛡️ VPN WARP (Funziona solo su ubuntu-22.04)
-      - name: Setup WARP
-        uses: fscarmen/warp-on-actions@v1.3
-        with:
-          stack: dual
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -32,7 +25,34 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install youtube-transcript-api requests google-api-python-client google-genai supabase pandas
+          # AGGIUNTO 'pysocks': Essenziale per usare il proxy SOCKS5 con requests
+          pip install youtube-transcript-api requests google-api-python-client google-genai supabase pandas pysocks
+
+      # 🛡️ INSTALLAZIONE MANUALE DI CLOUDFLARE WARP (Proxy Mode)
+      # Questo metodo è sicuro e non fa cadere la connessione del Runner
+      - name: Install & Configure WARP
+        run: |
+          # 1. Aggiungi le chiavi e la repo ufficiale di Cloudflare
+          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+          
+          # 2. Installa il client
+          sudo apt-get update && sudo apt-get install -y cloudflare-warp
+
+          # 3. Configura come Proxy SOCKS5 (Porta 40000)
+          # Registrazione (gestisce sia la vecchia che la nuova sintassi del comando)
+          echo "yes" | sudo warp-cli --accept-tos registration new || echo "yes" | sudo warp-cli --accept-tos register
+          
+          # Imposta modalità Proxy e Porta
+          sudo warp-cli --accept-tos mode proxy
+          sudo warp-cli --accept-tos proxy port 40000
+          
+          # 4. Connetti
+          sudo warp-cli --accept-tos connect
+          
+          # Attendi connessione e verifica
+          sleep 5
+          curl -x socks5://127.0.0.1:40000 -I https://www.google.com || echo "⚠️ Warning: Proxy test check failed"
 
       - name: Run worker
         env:

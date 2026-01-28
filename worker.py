@@ -5,7 +5,7 @@ import requests
 import traceback
 from datetime import datetime
 
-# Importiamo la classe
+# Importiamo la libreria ufficiale
 from youtube_transcript_api import YouTubeTranscriptApi
 from googleapiclient.discovery import build
 from google import genai
@@ -28,18 +28,26 @@ YOUTUBE_CHANNELS = ["@InvestireBiz"]
 
 # --- FUNZIONE RECUPERO TESTO ---
 def get_transcript(video_id: str) -> str:
-    print(f"   🕵️  Scarico sottotitoli per {video_id} (VPN + Istanza)...")
+    print(f"   🕵️  Scarico sottotitoli per {video_id} (via Proxy SOCKS5)...")
+    
+    # Configuriamo il dizionario proxy per la libreria
+    # SOCKS5h significa che anche la risoluzione DNS avviene tramite proxy (più sicuro e anonimo)
+    PROXIES = {
+        "https": "socks5h://127.0.0.1:40000",
+        "http": "socks5h://127.0.0.1:40000"
+    }
+
     try:
-        # 1. ISTANZIA L'OGGETTO
-        ytt_api = YouTubeTranscriptApi() 
-        
-        # 2. USA L'OGGETTO
-        transcript_list = ytt_api.list(video_id)
+        # Metodo Standard: passiamo 'proxies' direttamente alla funzione statica
+        # Non serve istanziare classi o oggetti complessi.
+        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id, proxies=PROXIES)
         
         transcript = None
         try:
+            # Cerca IT o EN
             transcript = transcript_list.find_transcript(['it', 'en'])
         except:
+            # Fallback: Traduci il primo disponibile
             try:
                 first = next(iter(transcript_list))
                 transcript = first.translate('it')
@@ -48,21 +56,17 @@ def get_transcript(video_id: str) -> str:
 
         if transcript:
             data = transcript.fetch()
-            parts = []
-            for i in data:
-                if isinstance(i, dict):
-                    parts.append(i.get('text', ''))
-                elif hasattr(i, 'text'):
-                    parts.append(i.text)
             
-            full_text = " ".join(parts)
+            # Parsing pulito
+            full_text = " ".join([i['text'] for i in data if 'text' in i])
+            
             if full_text:
                 print("   ✅ Successo!")
                 return full_text
 
     except Exception as e:
         print(f"   ⚠️ Errore Transcript: {e}")
-        # traceback.print_exc() # Decommenta per debug profondo
+        # traceback.print_exc()
         
     return ""
 
@@ -121,7 +125,7 @@ def get_channel_videos(handle):
 
 # --- MAIN ---
 if __name__ == "__main__":
-    print("--- 🚀 START WORKER (UBUNTU 22.04 + VPN) ---")
+    print("--- 🚀 START WORKER (MANUAL PROXY MODE) ---")
     for handle in YOUTUBE_CHANNELS:
         for v in get_channel_videos(handle):
             if url_exists(v['url']): continue
