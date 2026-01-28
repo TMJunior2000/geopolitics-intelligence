@@ -4,7 +4,7 @@ import time
 import requests
 import traceback
 from datetime import datetime
-from typing import cast, List, Dict, Any  # <--- IMPORT NECESSARIO PER IL FIX
+from typing import cast, List, Dict, Any
 
 from googleapiclient.discovery import build
 from google import genai
@@ -12,255 +12,202 @@ from google.genai import types
 from supabase import create_client, Client
 
 # --- SETUP & CONFIG ---
-print("\n🔧 [INIT] Avvio script e verifica variabili...")
+print("\n🔧 [INIT] Avvio script...")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY or not GOOGLE_API_KEY:
-    print("❌ ERRORE: Variabili d'ambiente mancanti!")
+    print("❌ ERRORE: Variabili mancanti.")
     exit(1)
 
 try:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     gemini_client = genai.Client(api_key=GOOGLE_API_KEY)
     youtube_service = build('youtube', 'v3', developerKey=GOOGLE_API_KEY)
-    print("✅ Client Supabase, Gemini e YouTube inizializzati.")
+    print("✅ Client inizializzati.")
 except Exception as e:
-    print(f"❌ ERRORE Inizializzazione Client: {e}")
-    traceback.print_exc()
+    print(f"❌ ERRORE INIT: {e}")
     exit(1)
 
 YOUTUBE_CHANNELS = ["@InvestireBiz"]
 
-# --- FUNZIONE TRASCRITTO (INVIDIOUS + PROXY) ---
+# --- 1. SCARICAMENTO SOTTOTITOLI (Proxy + Invidious) ---
 def get_transcript_via_proxy(video_id: str) -> str:
-    print(f"\n   🕵️  [DEBUG] Avvio ricerca sottotitoli per: {video_id}")
+    print(f"   🕵️  [SUB] Cerco sottotitoli per {video_id}...")
     
+    # Lista istanze robuste
     instances = [
-        "https://inv.tux.pizza",
-        "https://invidious.drgns.space",
+        "https://inv.nadeko.net",
+        "https://invidious.jing.rocks",
+        "https://yewtu.be",
         "https://vid.puffyan.us",
-        "https://inv.zzls.xyz",
-        "https://yt.artemislena.eu"
+        "https://inv.zzls.xyz"
     ]
     
-    # CONFIGURAZIONE PROXY (WARP LOCALE)
+    # Proxy SOCKS5h (Risoluzione DNS remota per privacy totale)
     proxies = {
         "http": "socks5h://127.0.0.1:40000",
         "https": "socks5h://127.0.0.1:40000"
     }
-    print("   👉 [DEBUG] Proxy configurato su socks5h://127.0.0.1:40000")
 
     for instance in instances:
         try:
-            print(f"   👉 [DEBUG] Tento istanza: {instance} ...")
-            url_list = f"{instance}/api/v1/captions/{video_id}"
+            # Timeout breve per scorrere veloce
+            res = requests.get(f"{instance}/api/v1/captions/{video_id}", proxies=proxies, timeout=8)
             
-            t_start = time.time()
-            res = requests.get(url_list, proxies=proxies, timeout=10)
-            elapsed = time.time() - t_start
+            if res.status_code != 200: continue
             
-            print(f"      [HTTP] Status: {res.status_code} | Tempo: {elapsed:.2f}s")
+            captions = res.json()
+            if not isinstance(captions, list): continue
             
-            if res.status_code != 200:
-                print(f"      ⚠️ Istanza non valida o errore API (Code: {res.status_code})")
-                continue
-            
-            try:
-                captions = res.json()
-            except:
-                print("      ⚠️ Errore parsing JSON risposta.")
-                continue
-
-            if not isinstance(captions, list):
-                print("      ⚠️ Formato JSON imprevisto (non è una lista).")
-                continue
-            
-            print(f"      ✅ Trovati {len(captions)} sottotitoli disponibili.")
-
+            # Logica scelta lingua: IT > EN > Primo
             target = None
-            # 1. Cerca Italiano
             for c in captions:
                 if c.get('language') == 'Italian' or c.get('code') == 'it':
-                    target = c
-                    print("      👉 Trovato Italiano nativo.")
-                    break
+                    target = c; break
             
-            # 2. Cerca Inglese
             if not target:
                 for c in captions:
-                    if 'en' in c.get('code', ''): 
-                        target = c
-                        print("      👉 Trovato Inglese (fallback).")
-                        break
+                    if 'en' in c.get('code', ''): target = c; break
             
-            # 3. Primo disponibile
-            if not target and len(captions) > 0:
-                target = captions[0]
-                print("      👉 Preso il primo disponibile (fallback estremo).")
+            if not target and captions: target = captions[0]
 
             if target:
-                full_url = f"{instance}{target['url']}"
-                print(f"      ⬇️  Scarico testo da: {full_url}")
-                
-                text_res = requests.get(full_url, proxies=proxies, timeout=10)
+                print(f"      ⬇️  Trovato su {instance}. Scarico...")
+                text_res = requests.get(f"{instance}{target['url']}", proxies=proxies, timeout=10)
                 
                 if text_res.status_code == 200:
                     raw_text = text_res.text
                     clean_text = ""
                     
+                    # Parsing JSON (alcune istanze tornano JSON)
                     if raw_text.strip().startswith('{') or raw_text.strip().startswith('['):
-                        print("      [PARSING] Rilevato formato JSON.")
                         try:
                             data = json.loads(raw_text)
                             clean_text = " ".join([x.get('content', '') for x in data if 'content' in x])
                         except: pass
+                    # Parsing VTT
                     else:
-                        print("      [PARSING] Rilevato formato VTT/Text.")
-                        lines = [
-                            l.strip() for l in raw_text.splitlines() 
-                            if "-->" not in l and l.strip() and not l.startswith(("WEBVTT", "NOTE", "Kind:", "Language:"))
-                        ]
-                        clean_lines = []
-                        for l in lines:
-                            if not clean_lines or clean_lines[-1] != l:
-                                clean_lines.append(l)
-                        clean_text = " ".join(clean_lines)
+                        lines = [l.strip() for l in raw_text.splitlines() 
+                                 if "-->" not in l and l.strip() and not l.startswith(("WEBVTT", "NOTE"))]
+                        clean_text = " ".join(dict.fromkeys(lines)) # Deduplica mantenendo ordine
 
                     if len(clean_text) > 50:
-                        print(f"   ✅ [SUCCESS] Testo estratto: {len(clean_text)} caratteri.")
+                        print(f"   ✅ Testo estratto: {len(clean_text)} chars.")
                         return clean_text
-                    else:
-                        print("      ⚠️ Testo estratto troppo breve o vuoto.")
-                else:
-                    print(f"      ❌ Errore download file testo (Status: {text_res.status_code})")
 
-        except requests.exceptions.ProxyError:
-            print("      ❌ Errore Proxy: Impossibile connettersi a WARP.")
-        except requests.exceptions.ConnectTimeout:
-            print("      ❌ Timeout connessione.")
-        except Exception as e:
-            print(f"      ❌ Errore generico istanza: {e}")
+        except Exception:
+            continue
             
-    print("   ❌ [FAIL] Sottotitoli non trovati su nessuna istanza.")
+    print("   ⚠️ Sottotitoli non trovati.")
     return ""
 
+# --- 2. ANALISI GEMINI (Con Retry 429) ---
 def analyze_gemini(text: str) -> dict:
-    if not text or len(text) < 50: 
-        print("   🧠 [DEBUG] Testo insufficiente per Gemini.")
-        return {"summary": "N/A"}
+    if not text or len(text) < 50: return {"summary": "N/A"}
     
-    print(f"   🧠 [DEBUG] Invio {len(text)} caratteri a Gemini...")
-    try:
-        res = gemini_client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=f'Analizza JSON: {{ "summary": "Riassunto dettagliato", "risk_level": "LOW", "countries_involved": [], "key_takeaway": "Punto chiave" }}\nTEXT:{text[:25000]}',
-            config=types.GenerateContentConfig(response_mime_type="application/json")
-        )
-        parsed = json.loads(res.text.replace("```json","").replace("```","").strip())
-        print("   ✅ [DEBUG] Risposta Gemini ricevuta e parsata.")
-        return parsed
-    except Exception as e: 
-        print(f"   ❌ [DEBUG] Errore Gemini: {e}")
-        return {}
-
-def get_source_id(name, ch_id):
-    print(f"   🔎 [DB] Cerco source: {name}")
-    try:
-        res = supabase.table("sources").select("id").eq("name", name).execute()
+    print(f"   🧠 [AI] Invio a Gemini ({len(text)} chars)...")
+    
+    for attempt in range(3): # 3 Tentativi
+        try:
+            res = gemini_client.models.generate_content(
+                model="gemini-flash-latest",
+                contents=f'Analizza JSON: {{ "summary": "Riassunto dettagliato", "risk_level": "LOW", "countries_involved": [], "key_takeaway": "Punto chiave" }}\nTEXT:{text[:25000]}',
+                config=types.GenerateContentConfig(response_mime_type="application/json")
+            )
+            return json.loads(res.text.replace("```json","").replace("```","").strip())
         
-        # --- FIX PYLANCE: Casting esplicito ---
+        except Exception as e:
+            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                wait = 35 * (attempt + 1)
+                print(f"      ⚠️ Quota AI esaurita. Attendo {wait}s...")
+                time.sleep(wait)
+            else:
+                print(f"      ❌ Errore AI: {e}")
+                return {}
+    return {}
+
+# --- 3. GESTIONE DB (Fix Constraints) ---
+def get_source_id(name, ch_id):
+    try:
+        # Check esistenza
+        res = supabase.table("sources").select("id").eq("name", name).execute()
         data = cast(List[Dict[str, Any]], res.data)
         
-        if data and len(data) > 0:
-            sid = str(data[0]['id'])
-            print(f"      ✅ Trovata ID: {sid}")
-            return sid
+        if data: return str(data[0]['id'])
         
-        print("      ➕ Creo nuova source...")
-        new = supabase.table("sources").insert({"name": name, "type": "yt", "base_url": ch_id}).execute()
+        # Creazione Nuova Source
+        print("      ➕ Creo nuova source nel DB...")
         
-        # --- FIX PYLANCE: Casting esplicito ---
+        # ⚠️ FIX IMPORTANTE: 'type' deve essere 'youtube', NON 'yt'
+        new = supabase.table("sources").insert({
+            "name": name, 
+            "type": "youtube",   # <--- FIX SQL CONSTRAINT
+            "base_url": ch_id
+        }).execute()
+        
         new_data = cast(List[Dict[str, Any]], new.data)
-        
-        if new_data and len(new_data) > 0:
-            sid = str(new_data[0]['id'])
-            print(f"      ✅ Creata ID: {sid}")
-            return sid
+        if new_data: return str(new_data[0]['id'])
             
     except Exception as e:
         print(f"   ❌ [DB ERROR] get_source_id: {e}")
-        traceback.print_exc()
     return None
 
 def get_channel_videos(handle):
-    print(f"📡 [DEBUG] Scansiono API YouTube per: {handle}")
     videos = []
     try:
         res = youtube_service.channels().list(part="contentDetails,snippet", forHandle=handle).execute()
-        if not res.get('items'): 
-            print("   ⚠️ Nessun canale trovato.")
-            return []
-        
+        if not res.get('items'): return []
         upl = res['items'][0]['contentDetails']['relatedPlaylists']['uploads']
         ch_title = res['items'][0]['snippet']['title']
         ch_id = res['items'][0]['id']
-        
         pl = youtube_service.playlistItems().list(part="snippet", playlistId=upl, maxResults=5).execute()
         for i in pl.get('items', []):
-            vid = i['snippet']['resourceId']['videoId']
-            print(f"   👉 Video trovato: {vid} - {i['snippet']['title'][:30]}...")
             videos.append({
-                "id": vid,
+                "id": i['snippet']['resourceId']['videoId'],
                 "title": i['snippet']['title'],
                 "desc": i['snippet']['description'],
                 "date": i['snippet']['publishedAt'],
-                "url": f"https://www.youtube.com/watch?v={vid}",
+                "url": f"https://www.youtube.com/watch?v={i['snippet']['resourceId']['videoId']}",
                 "ch_title": ch_title, "ch_id": ch_id
             })
-    except Exception as e:
-        print(f"   ❌ [API ERROR] YouTube Data: {e}")
+    except: pass
     return videos
 
-# --- MAIN ---
+# --- MAIN LOOP ---
 if __name__ == "__main__":
-    print("\n--- 🚀 START WORKER (DEBUG + TYPE FIX) ---")
+    print("\n--- 🚀 START WORKER (FIX SQL + RETRY) ---")
     
     for handle in YOUTUBE_CHANNELS:
         videos = get_channel_videos(handle)
         
         for v in videos:
-            print(f"\n🔄 [PROCESSING] {v['title'][:50]}...")
+            print(f"\n🔄 {v['title'][:40]}...")
             
-            # Check esistenza con FIX PYLANCE
+            # Check DB
             try:
                 exists = supabase.table("intelligence_feed").select("id").eq("url", v['url']).execute()
-                exists_data = cast(List[Dict[str, Any]], exists.data)
-                
-                if exists_data and len(exists_data) > 0:
-                    print("   ⏭️  Già presente nel DB. Salto.")
+                if exists.data:
+                    print("   ⏭️  Già salvato.")
                     continue
-            except Exception as e:
-                print(f"   ⚠️ Errore controllo esistenza DB: {e}")
+            except: pass
 
-            # 1. RECUPERO TESTO
+            # 1. Testo
             text = get_transcript_via_proxy(v['id'])
             method = "Invidious+Proxy"
-            
             if not text:
-                print("   ⚠️ [FALLBACK] Sottotitoli assenti. Uso descrizione.")
+                print("   ⚠️ Fallback Descrizione.")
                 text = f"{v['title']}\n{v['desc']}"
                 method = "Descrizione"
             
-            # 2. ANALISI
+            # 2. Analisi
             analysis = analyze_gemini(text)
             
-            # 3. SALVATAGGIO
+            # 3. Salvataggio
             sid = get_source_id(v['ch_title'], v['ch_id'])
             
             if sid:
-                print("   💾 [DB] Tentativo salvataggio...")
                 try:
                     data = {
                         "source_id": sid, 
@@ -271,22 +218,13 @@ if __name__ == "__main__":
                         "analysis": analysis,
                         "raw_metadata": {"vid": v['id'], "method": method}
                     }
-                    res = supabase.table("intelligence_feed").insert(data).execute()
-                    
-                    # Fix Pylance anche qui
-                    res_data = cast(List[Dict[str, Any]], res.data)
-
-                    if res_data and len(res_data) > 0:
-                        print(f"   ✅ [SUCCESS] Salvato con ID: {res_data[0]['id']}")
-                    else:
-                        print("   ❓ [WARNING] Insert eseguito ma nessun dato ritornato (RLS attivo?).")
-                        
+                    supabase.table("intelligence_feed").insert(data).execute()
+                    print(f"   💾 SALVATO!")
                 except Exception as e:
-                    print(f"   ❌ [DB INSERT ERROR] : {e}")
-                    traceback.print_exc()
-            else:
-                print("   ❌ [ERROR] Source ID mancante, impossibile salvare.")
+                    print(f"   ❌ ERRORE INSERT: {e}")
             
-            time.sleep(1)
+            # Pausa anti-ban Gemini
+            print("   💤 Pause 10s...")
+            time.sleep(10)
             
-    print("\n--- ✅ WORKER FINISHED ---")
+    print("\n--- ✅ FINITO ---")
