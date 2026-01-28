@@ -2,17 +2,15 @@ import os
 import json
 import time
 import uuid
-import shutil
 import datetime as dt
 from datetime import datetime, timezone
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any, cast
 
-# --- LIBRERIE ESTERNE ---
+# --- LIBRERIE ---
 import yt_dlp
 import assemblyai as aai
 from youtube_transcript_api import YouTubeTranscriptApi
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
 from google import genai
 from google.genai import types
 from supabase import create_client, Client
@@ -25,91 +23,117 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 ASSEMBLYAI_KEY = os.getenv("ASSEMBLYAI_KEY")
 MODE = os.getenv("MODE", "LIVE").upper()
-BACKFILL_START = dt.date(2026, 1, 1)
-BACKFILL_END = dt.date(2026, 1, 31)
 
-YOUTUBE_CHANNELS = ["@InvestireBiz"]
+if not SUPABASE_URL or not SUPABASE_KEY or not GOOGLE_API_KEY or not ASSEMBLYAI_KEY:
+    raise ValueError("❌ ERRORE: Variabili d'ambiente mancanti.")
 
-# Init Clients
-aai.settings.api_key = ASSEMBLYAI_KEY
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 gemini_client = genai.Client(api_key=GOOGLE_API_KEY)
 youtube_service = build('youtube', 'v3', developerKey=GOOGLE_API_KEY)
+aai.settings.api_key = ASSEMBLYAI_KEY
+
+YOUTUBE_CHANNELS = ["@InvestireBiz"]
+BACKFILL_START = dt.date(2026, 1, 1)
+BACKFILL_END = dt.date(2026, 1, 31)
 
 # =========================
-# LOGICA DI DOWNLOAD (STRATEGIA TRIPLA)
+# 1. AUDIO STRATEGY
 # =========================
 
-def download_audio_android_strategy(video_url: str) -> Optional[str]:
-    """Prova a scaricare usando l'API Android (spesso non bloccata)."""
+def download_audio_force_ipv4(video_url: str) -> Optional[str]:
+    """Scarica audio forzando IPv4."""
     temp_dir = "temp_audio"
     if not os.path.exists(temp_dir): os.makedirs(temp_dir)
     
     unique_name = f"audio_{uuid.uuid4()}"
     output_path = os.path.join(temp_dir, unique_name)
 
-    # Configurazione "Android Mobile"
     ydl_opts = {
         'format': 'bestaudio[ext=m4a]/bestaudio/best',
         'outtmpl': output_path,
         'quiet': True,
         'noplaylist': True,
-        # TRUCCO: Usiamo il client Android che è meno controllato
-        'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
+        'source_address': '0.0.0.0',
+        'force_ipv4': True,
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
             'preferredquality': '192',
         }],
+        'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+        'ignoreerrors': True,
+        'no_warnings': True,
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([video_url])
-        return output_path + ".mp3"
-    except Exception as e:
-        print(f"   ⚠️ Metodo Android fallito: {e}")
+        
+        final_path = output_path + ".mp3"
+        if os.path.exists(final_path) and os.path.getsize(final_path) > 1000:
+            return final_path
+        return None
+    except Exception:
         return None
 
-def get_transcript_text(video_id: str) -> str:
-    """FALLBACK: Scarica i sottotitoli se l'audio è bloccato."""
+def transcribe_assemblyai(file_path: str) -> str:
+    """Trascrive con AssemblyAI."""
     try:
-        # Usa proxy vuoto o configurazione base
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-        
-        # Cerca IT o EN
-        try:
-            transcript = transcript_list.find_transcript(['it', 'en'])
-        except:
-            transcript = transcript_list[0].translate('it')
-
-        transcript_data = transcript.fetch()
-        return " ".join([item['text'] for item in transcript_data])
-    except Exception as e:
-        print(f"   ⚠️ Fallback Transcript fallito: {e}")
-        return ""
-
-def transcribe_with_assemblyai(file_path: str) -> str:
-    """Trascrive file audio."""
-    transcriber = aai.Transcriber()
-    config = aai.TranscriptionConfig(language_code="it")
-    try:
+        transcriber = aai.Transcriber()
+        config = aai.TranscriptionConfig(language_code="it")
         transcript = transcriber.transcribe(file_path, config=config)
-        return transcript.text if transcript.status != aai.TranscriptStatus.error else ""
+        
+        if transcript.status == aai.TranscriptStatus.error:
+            return ""
+        return transcript.text if transcript.text else ""
     except:
         return ""
 
 # =========================
-# INTELLIGENZA ARTIFICIALE
+# 2. TRANSCRIPT STRATEGY
 # =========================
 
-def analyze_with_gemini(text: str) -> dict:
+def get_transcript_text(video_id: str) -> str:
+    try:
+        ytt_api = YouTubeTranscriptApi()
+        transcript_list = ytt_api.list(video_id)
+        
+        try:
+            transcript = transcript_list.find_transcript(['it', 'en'])
+        except:
+            first_transcript = next(iter(transcript_list))
+            transcript = first_transcript.translate('it')
+
+        transcript_data = transcript.fetch()
+        
+        text_parts = []
+        for item in transcript_data:
+            if isinstance(item, dict):
+                text_parts.append(item.get('text', ''))
+            elif hasattr(item, 'text'):
+                text_parts.append(item.text)
+                
+        return " ".join(text_parts)
+    except Exception:
+        return ""
+
+# =========================
+# 3. ANALISI & DB (CORRETTO CON CASTING)
+# =========================
+
+def analyze_gemini(text: str) -> dict:
     if not text or len(text) < 50:
         return {"summary": "N/A", "risk_level": "LOW", "countries_involved": []}
-        
+    
     prompt = """
-    Analizza il testo. Restituisci JSON:
-    { "summary": "...", "countries_involved": [], "risk_level": "LOW/MEDIUM/HIGH", "keywords": [] }
+    Analizza il testo. Output JSON ESCLUSIVO:
+    {
+        "summary": "Riassunto italiano",
+        "countries_involved": ["Paese1"],
+        "risk_level": "LOW",
+        "keywords": ["tag1"],
+        "key_takeaway": "Concetto chiave"
+    }
     """
     try:
         response = gemini_client.models.generate_content(
@@ -117,73 +141,55 @@ def analyze_with_gemini(text: str) -> dict:
             contents=f"{prompt}\n\nTESTO:\n{text[:30000]}",
             config=types.GenerateContentConfig(response_mime_type="application/json")
         )
+        if not response.text: return {"summary": "Errore AI vuota"}
         return json.loads(response.text.replace("```json", "").replace("```", "").strip())
     except Exception as e:
         return {"summary": f"Errore AI: {str(e)}"}
 
-# =========================
-# MAIN LOOP
-# =========================
+def get_source_id(name: str, ch_id: str) -> Optional[str]:
+    """Recupera o crea la Source ID gestendo i tipi rigorosamente."""
+    try:
+        res = supabase.table("sources").select("id").eq("name", name).execute()
+        
+        if res.data and len(res.data) > 0:
+            # FIX CRITICO: Diciamo a Pylance che questo elemento è un Dizionario
+            first_record = cast(Dict[str, Any], res.data[0])
+            # FIX CRITICO: Convertiamo in stringa per sicurezza
+            return str(first_record['id'])
+            
+        new = supabase.table("sources").insert({
+            "name": name, 
+            "type": "youtube", 
+            "base_url": f"https://youtube.com/channel/{ch_id}"
+        }).execute()
+        
+        if new.data and len(new.data) > 0:
+            # FIX CRITICO: Casting anche qui
+            first_new_record = cast(Dict[str, Any], new.data[0])
+            return str(first_new_record['id'])
+            
+        return None
+    except Exception as e:
+        print(f"❌ Errore Source ID: {e}")
+        return None
 
-def process_video(video):
-    print(f"🔄 Processing: {video['title'][:40]}...")
-    full_text = ""
+def url_exists(url: str) -> bool:
+    try:
+        res = supabase.table("intelligence_feed").select("id").eq("url", url).execute()
+        return len(res.data) > 0 if res.data else False
+    except: return False
 
-    # TENTATIVO 1: SCARICA AUDIO (Massima Qualità)
-    mp3_path = download_audio_android_strategy(video['url'])
-    
-    if mp3_path and os.path.exists(mp3_path):
-        print("   🎙️  Audio scaricato! Trascrivo con AssemblyAI...")
-        full_text = transcribe_with_assemblyai(mp3_path)
-        os.remove(mp3_path) # Pulizia
-    
-    # TENTATIVO 2: FALLBACK SOTTOTITOLI (Se audio bloccato)
-    if not full_text:
-        print("   ⚠️ Audio bloccato/fallito. Passo ai Sottotitoli YouTube...")
-        full_text = get_transcript_text(video['id'])
-
-    # TENTATIVO 3: DESCRIZIONE (Disperazione)
-    if not full_text:
-        print("   ⚠️ Sottotitoli assenti. Uso la Descrizione.")
-        full_text = f"{video['title']}\n{video['description']}"
-
-    # ANALISI E SALVATAGGIO
-    print("   🧠 Analisi Gemini...")
-    analysis = analyze_with_gemini(full_text)
-
-    # Salva DB (Logica semplificata)
-    # ... (Il tuo codice di salvataggio Supabase qui) ...
-    # Assicurati di usare get_or_create_source e insert come nel tuo vecchio script
-    
-    # ESEMPIO RAPIDO SALVATAGGIO:
-    source_id = get_or_create_source_helper(video['channel_title'], video['channel_id'])
-    supabase.table("intelligence_feed").insert({
-        "source_id": source_id,
-        "title": video['title'],
-        "url": video['url'],
-        "published_at": video['published_at'].isoformat(),
-        "content": full_text,
-        "analysis": analysis,
-        "raw_metadata": {"video_id": video['id']}
-    }).execute()
-    print("   💾 Salvato.")
-    time.sleep(5)
-
-# Helper funzioni rimaste uguali (get_channel_videos, etc...)
-# Inserisci qui le funzioni helper dal codice precedente (get_channel_videos_official, url_exists, ecc.)
-# Per brevità non le riscrivo tutte, ma SONO NECESSARIE.
-# Assicurati di includere: get_channel_videos_official, url_exists, get_or_create_source
-
-# --- AGGIUNGI QUI SOTTO LE FUNZIONI HELPER CHE AVEVI NEL CODICE PRECEDENTE ---
-def get_channel_videos_official(handle):
-    # ... (Copia dal codice precedente) ...
+def get_channel_videos(handle):
     videos = []
     try:
         ch_res = youtube_service.channels().list(part="id,contentDetails,snippet", forHandle=handle).execute()
-        if not ch_res['items']: return []
-        uploads = ch_res['items'][0]['contentDetails']['relatedPlaylists']['uploads']
-        ch_title = ch_res['items'][0]['snippet']['title']
-        ch_id = ch_res['items'][0]['id']
+        if not ch_res.get('items'): return []
+        
+        item = ch_res['items'][0]
+        uploads = item['contentDetails']['relatedPlaylists']['uploads']
+        ch_title = item['snippet']['title']
+        ch_id = item['id']
+        
         pl_res = youtube_service.playlistItems().list(part="snippet", playlistId=uploads, maxResults=10).execute()
         for item in pl_res.get('items', []):
             s = item['snippet']
@@ -198,20 +204,65 @@ def get_channel_videos_official(handle):
     except: pass
     return videos
 
-def url_exists(url):
-    res = supabase.table("intelligence_feed").select("id").eq("url", url).execute()
-    return len(res.data) > 0
+# =========================
+# MAIN LOOP
+# =========================
 
-def get_or_create_source_helper(name, ch_id):
-    res = supabase.table("sources").select("id").eq("name", name).execute()
-    if res.data: return res.data[0]['id']
-    new = supabase.table("sources").insert({"name": name, "type": "youtube", "base_url": f"https://youtube.com/channel/{ch_id}"}).execute()
-    return new.data[0]['id'] if new.data else None
+def process_video(video):
+    print(f"🔄 Processing: {video['title'][:50]}...")
+    full_text = ""
+    used_method = "N/A"
+
+    # 1. AUDIO
+    mp3_path = download_audio_force_ipv4(video['url'])
+    if mp3_path:
+        print("   🎙️  Audio scaricato! Trascrivo...")
+        full_text = transcribe_assemblyai(mp3_path)
+        if full_text: 
+            used_method = "Audio (AssemblyAI)"
+            os.remove(mp3_path)
+    
+    # 2. SOTTOTITOLI
+    if not full_text:
+        print("   📜 Recupero Sottotitoli...")
+        full_text = get_transcript_text(video['id'])
+        if full_text: used_method = "Sottotitoli"
+
+    # 3. DESCRIZIONE
+    if not full_text:
+        print("   ⚠️ Uso Descrizione.")
+        full_text = f"TITOLO: {video['title']}\nDESCRIZIONE: {video['description']}"
+        used_method = "Descrizione"
+
+    # ANALISI
+    print(f"   🧠 Analisi Gemini ({used_method})...")
+    analysis = analyze_gemini(full_text)
+
+    # SALVATAGGIO
+    try:
+        source_id = get_source_id(video['channel_title'], video['channel_id'])
+        if source_id:
+            supabase.table("intelligence_feed").insert({
+                "source_id": source_id,
+                "title": video['title'],
+                "url": video['url'],
+                "published_at": video['published_at'].isoformat(),
+                "content": full_text,
+                "analysis": analysis,
+                "raw_metadata": {"video_id": video['id'], "method": used_method}
+            }).execute()
+            print("   💾 Salvato.")
+    except Exception as e:
+        print(f"   ❌ Errore DB: {e}")
+
+    time.sleep(3)
 
 if __name__ == "__main__":
-    print(f"--- START (MODE={MODE}) ---")
+    print(f"--- 🚀 WORKER START (MODE={MODE}) ---")
     for handle in YOUTUBE_CHANNELS:
-        videos = get_channel_videos_official(handle)
+        print(f"📡 Scansione: {handle}")
+        videos = get_channel_videos(handle)
         for video in videos:
             if url_exists(video['url']): continue
             process_video(video)
+    print("--- ✅ WORKER FINISHED ---")
