@@ -10,15 +10,15 @@ on:
 
 jobs:
   run-worker:
-    # ⚠️ FIX CRITICO: Usiamo ubuntu-22.04 perché ubuntu-latest (24.04)
-    # ha rimosso 'openresolv', rompendo l'installazione della VPN WARP.
+    # 🛑 FERMO! NON CAMBIARE QUESTA RIGA.
+    # Serve la versione 22.04 perché la 24.04 non supporta la VPN WARP.
     runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # 🛡️ VPN CLOUDFLARE (Funziona su ubuntu-22.04)
+      # 🛡️ VPN WARP (Funziona solo su ubuntu-22.04)
       - name: Setup WARP
         uses: fscarmen/warp-on-actions@v1.3
         with:

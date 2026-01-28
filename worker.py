@@ -26,26 +26,21 @@ youtube_service = build('youtube', 'v3', developerKey=GOOGLE_API_KEY)
 
 YOUTUBE_CHANNELS = ["@InvestireBiz"]
 
-# --- FUNZIONE RECUPERO TESTO (CON ISTANZA) ---
+# --- FUNZIONE RECUPERO TESTO ---
 def get_transcript(video_id: str) -> str:
-    print(f"   🕵️  Scarico sottotitoli per {video_id}...")
+    print(f"   🕵️  Scarico sottotitoli per {video_id} (VPN + Istanza)...")
     try:
-        # 1. CREAZIONE ISTANZA (Come richiesto espressamente da te)
-        # Inizializziamo la classe. Se serve proxy o http_client custom, vanno qui.
+        # 1. ISTANZIA L'OGGETTO
         ytt_api = YouTubeTranscriptApi() 
         
-        # 2. CHIAMATA METODO D'ISTANZA (.list)
-        # Non uso list_transcripts statico, uso .list() sull'oggetto creato
+        # 2. USA L'OGGETTO
         transcript_list = ytt_api.list(video_id)
         
         transcript = None
         try:
-            # 3. Cerca IT o EN
             transcript = transcript_list.find_transcript(['it', 'en'])
         except:
-            # Fallback: Traduci il primo disponibile
             try:
-                # Iteriamo sull'oggetto transcript_list
                 first = next(iter(transcript_list))
                 transcript = first.translate('it')
             except:
@@ -53,7 +48,6 @@ def get_transcript(video_id: str) -> str:
 
         if transcript:
             data = transcript.fetch()
-            # Unione testo
             parts = []
             for i in data:
                 if isinstance(i, dict):
@@ -68,8 +62,7 @@ def get_transcript(video_id: str) -> str:
 
     except Exception as e:
         print(f"   ⚠️ Errore Transcript: {e}")
-        # Debug extra per capire se la classe è diversa
-        traceback.print_exc()
+        # traceback.print_exc() # Decommenta per debug profondo
         
     return ""
 
@@ -128,7 +121,7 @@ def get_channel_videos(handle):
 
 # --- MAIN ---
 if __name__ == "__main__":
-    print("--- 🚀 START WORKER (INSTANCE MODE + VPN) ---")
+    print("--- 🚀 START WORKER (UBUNTU 22.04 + VPN) ---")
     for handle in YOUTUBE_CHANNELS:
         for v in get_channel_videos(handle):
             if url_exists(v['url']): continue
