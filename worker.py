@@ -1,226 +1,223 @@
 import os
 import json
 import time
-import glob
-import re
 from typing import cast, List, Dict, Any
 
-import yt_dlp
+# Libreria ufficiale Apify
+from apify_client import ApifyClient
+
 from googleapiclient.discovery import build
 from google import genai
 from google.genai import types
 from supabase import create_client, Client
 
 # --- CONFIGURAZIONE ---
-print("\n🔧 [INIT] Avvio script (COOKIES AUTH MODE)...")
+print("\n🔧 [INIT] Avvio script (APIFY OFFICIAL CLIENT)...")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-YOUTUBE_COOKIES = os.getenv("YOUTUBE_COOKIES") # <--- IL PASSPARTOUT
+APIFY_TOKEN = os.getenv("APIFY_TOKEN")
 
-if not SUPABASE_URL or not SUPABASE_KEY or not GOOGLE_API_KEY:
-    print("❌ ERRORE: Variabili mancanti.")
+if not all([SUPABASE_URL, SUPABASE_KEY, GOOGLE_API_KEY, APIFY_TOKEN]):
+    print("❌ ERRORE: Variabili d'ambiente mancanti (Controlla i Secrets di GitHub).")
     exit(1)
 
-if not YOUTUBE_COOKIES:
-    print("⚠️ ATTENZIONE: Secret 'YOUTUBE_COOKIES' non trovato. Probabile fallimento.")
-
 try:
+    # Inizializzazione client secondo la classe ApifyClient che hai postato
+    apify_client = ApifyClient(token=APIFY_TOKEN)
+    
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     gemini_client = genai.Client(api_key=GOOGLE_API_KEY)
     youtube_service = build('youtube', 'v3', developerKey=GOOGLE_API_KEY)
-    print("✅ Client inizializzati.")
+    print("✅ Tutti i client (Apify, Supabase, Gemini, YouTube) inizializzati.")
 except Exception as e:
-    print(f"❌ ERRORE INIT: {e}")
+    print(f"❌ ERRORE DURANTE L'INIZIALIZZAZIONE: {e}")
     exit(1)
 
 YOUTUBE_CHANNELS = ["@InvestireBiz"]
 
-# --- GESTIONE COOKIE ---
-def create_cookie_file():
-    """Crea il file cookie temporaneo dal Secret"""
-    if not YOUTUBE_COOKIES: return None
-    path = "/tmp/cookies.txt"
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(YOUTUBE_COOKIES)
-    print("   🍪 File cookie creato in /tmp/cookies.txt")
-    return path
-
-# --- PULIZIA TESTO ---
-def clean_vtt_text(vtt_content: str) -> str:
-    lines = vtt_content.splitlines()
-    text_lines = []
-    seen = set()
-    for line in lines:
-        line = line.strip()
-        if (not line or line.startswith("WEBVTT") or "-->" in line or 
-            line.startswith(("Kind:", "Language:")) or re.match(r'^\d+$', line)):
-            continue
-        line = re.sub(r'<[^>]+>', '', line).replace("&nbsp;", " ")
-        if line and line not in seen:
-            text_lines.append(line)
-            seen.add(line)
-    return " ".join(text_lines)
-
-# --- SCARICAMENTO (yt-dlp + COOKIES + PROXY) ---
-def get_transcript_ytdlp(video_url: str, cookie_path: str) -> str:
-    print(f"   🔐 [YT-DLP] Scarico con autenticazione: {video_url}...")
+# --- FUNZIONE TRASCRITTO (VIA APIFY CLIENT) ---
+def get_transcript_apify(video_url: str) -> str:
+    print(f"   🤖 [APIFY] Delegando recupero sottotitoli per: {video_url}")
     
-    ydl_opts = {
-        'proxy': 'socks5://127.0.0.1:40000', # Proxy WARP (manteniamolo per sicurezza)
-        'skip_download': True,
-        'writesubtitles': True,
-        'writeautomaticsub': True,
-        'subtitleslangs': ['it', 'en'],
-        'outtmpl': '/tmp/%(id)s',
-        'quiet': True,
-        'no_warnings': True,
+    # Utilizziamo l'Actor più affidabile ed economico per i transcript
+    # ID Actor: 'streamot/youtube-transcript-scraper'
+    actor_id = "streamot/youtube-transcript-scraper"
+    
+    run_input = {
+        "videoUrls": [video_url],
+        "subtitlesLanguage": "it",
+        "addVideoMetadata": False
     }
 
-    # SE ABBIAMO I COOKIE, USIAMOLI!
-    if cookie_path:
-        ydl_opts['cookiefile'] = cookie_path
-    else:
-        # Fallback disperato su Android se mancano i cookie
-        ydl_opts['extractor_args'] = {'youtube': {'player_client': ['android']}}
-
     try:
-        # Pulisce vecchi file
-        for f in glob.glob("/tmp/*.vtt"): os.remove(f)
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([video_url])
-
-        files = glob.glob("/tmp/*.vtt")
-        if not files:
-            print("      ⚠️ Nessun file sottotitoli trovato.")
-            return ""
+        # Invocazione dell'Actor (Metodo sincrono .call() visto nella classe _BaseApifyClient)
+        # Questo comando attende che l'elaborazione cloud sia finita.
+        run = apify_client.actor(actor_id).call(run_input=run_input)
         
-        target_file = files[0]
-        for f in files:
-            if ".it." in f: target_file = f; break
+        # Accesso al Dataset (il contenitore dei risultati della Run)
+        # Utilizziamo il metodo .dataset() della classe ApifyClient
+        dataset_items = apify_client.dataset(run["defaultDatasetId"]).list_items().items
         
-        print(f"      ✅ File scaricato: {os.path.basename(target_file)}")
-        with open(target_file, 'r', encoding='utf-8') as f:
-            content = f.read()
+        if dataset_items:
+            item = dataset_items[0]
+            # Estrazione del testo: l'actor restituisce 'transcript' o 'text'
+            transcript = item.get("transcript") or item.get("text") or ""
             
-        clean_text = clean_vtt_text(content)
+            if isinstance(transcript, list):
+                # Se i sottotitoli sono divisi in segmenti, li uniamo
+                transcript = " ".join([segment.get("text", "") for segment in transcript])
+            
+            if len(transcript) > 50:
+                print(f"      ✅ Trascrizione ottenuta: {len(transcript)} caratteri.")
+                return transcript
         
-        if len(clean_text) > 50:
-            print(f"      ✅ Testo estratto: {len(clean_text)} chars.")
-            return clean_text
-        else:
-            return ""
-
+        print("      ⚠️ Attenzione: Apify ha concluso ma il dataset è vuoto.")
     except Exception as e:
-        print(f"      ❌ Errore yt-dlp: {e}")
-        return ""
+        print(f"      ❌ Errore durante la chiamata ad Apify: {e}")
+        
+    return ""
 
-# --- ANALISI GEMINI ---
+# --- ANALISI GEMINI 2.0 FLASH ---
 def analyze_gemini(text: str) -> dict:
-    if not text or len(text) < 50: return {"summary": "N/A"}
-    print(f"   🧠 [AI] Invio {len(text)} chars...")
+    if not text or len(text) < 50:
+        return {"summary": "Analisi non disponibile", "risk_level": "UNKNOWN"}
+    
+    print(f"   🧠 [GEMINI] Analisi del testo ({len(text)} caratteri)...")
+    
+    prompt = (
+        "Analizza il seguente trascritto di un video finanziario e restituisci un JSON con questa struttura:\n"
+        "{\n"
+        "  \"summary\": \"riassunto dettagliato in italiano\",\n"
+        "  \"risk_level\": \"LOW/MEDIUM/HIGH\",\n"
+        "  \"countries_involved\": [\"lista paesi\"],\n"
+        "  \"key_takeaway\": \"punto chiave principale\"\n"
+        "}\n"
+        f"TEXT: {text[:28000]}" # Limite di sicurezza per il context window
+    )
+
     for attempt in range(3):
         try:
-            res = gemini_client.models.generate_content(
+            response = gemini_client.models.generate_content(
                 model="gemini-2.0-flash",
-                contents=f'Analizza JSON: {{ "summary": "Riassunto", "risk_level": "LOW", "countries_involved": [], "key_takeaway": "Main" }}\nTEXT:{text[:28000]}',
+                contents=prompt,
                 config=types.GenerateContentConfig(response_mime_type="application/json")
             )
-            return json.loads(res.text.replace("```json","").replace("```","").strip())
+            return json.loads(response.text.strip())
         except Exception as e:
-            if "429" in str(e): 
-                print("      ⚠️ Quota AI 429. Wait 35s...")
+            if "429" in str(e):
+                print(f"      ⚠️ Quota Gemini esaurita (429). Tentativo {attempt+1}/3. Attesa 35s...")
                 time.sleep(35)
-            else: return {}
+            else:
+                print(f"      ❌ Errore Gemini: {e}")
+                return {}
     return {}
 
-# --- DB ---
+# --- GESTIONE DATABASE (SUPABASE) ---
 def get_source_id(name, ch_id):
     try:
         res = supabase.table("sources").select("id").eq("name", name).execute()
         data = cast(List[Dict[str, Any]], res.data)
         if data: return str(data[0]['id'])
         
+        # Se non esiste, crea la sorgente (type 'youtube' per via del check constraint)
         new = supabase.table("sources").insert({
-            "name": name, "type": "youtube", "base_url": ch_id
+            "name": name, 
+            "type": "youtube", 
+            "base_url": ch_id
         }).execute()
         new_data = cast(List[Dict[str, Any]], new.data)
         if new_data: return str(new_data[0]['id'])
-    except: pass
+    except Exception as e:
+        print(f"   ❌ Errore DB Source ID: {e}")
     return None
 
 def get_channel_videos(handle):
     videos = []
     try:
+        # Recupero ID canale e Playlist Uploads
         res = youtube_service.channels().list(part="contentDetails,snippet", forHandle=handle).execute()
         if not res.get('items'): return []
-        upl = res['items'][0]['contentDetails']['relatedPlaylists']['uploads']
-        ch_title = res['items'][0]['snippet']['title']
-        ch_id = res['items'][0]['id']
-        pl = youtube_service.playlistItems().list(part="snippet", playlistId=upl, maxResults=5).execute()
-        for i in pl.get('items', []):
+        
+        uploads_playlist_id = res['items'][0]['contentDetails']['relatedPlaylists']['uploads']
+        channel_title = res['items'][0]['snippet']['title']
+        channel_id = res['items'][0]['id']
+        
+        # Recupero ultimi 5 video
+        playlist_res = youtube_service.playlistItems().list(
+            part="snippet", 
+            playlistId=uploads_playlist_id, 
+            maxResults=5
+        ).execute()
+        
+        for item in playlist_res.get('items', []):
+            snippet = item['snippet']
             videos.append({
-                "id": i['snippet']['resourceId']['videoId'],
-                "title": i['snippet']['title'],
-                "desc": i['snippet']['description'],
-                "date": i['snippet']['publishedAt'],
-                "url": f"https://www.youtube.com/watch?v={i['snippet']['resourceId']['videoId']}",
-                "ch_title": ch_title, "ch_id": ch_id
+                "id": snippet['resourceId']['videoId'],
+                "title": snippet['title'],
+                "desc": snippet['description'],
+                "date": snippet['publishedAt'],
+                "url": f"https://www.youtube.com/watch?v={snippet['resourceId']['videoId']}",
+                "ch_title": channel_title,
+                "ch_id": channel_id
             })
-    except: pass
+    except Exception as e:
+        print(f"   ❌ Errore YouTube API: {e}")
     return videos
 
-# --- MAIN ---
+# --- MAIN LOOP ---
 if __name__ == "__main__":
-    print("\n--- 🚀 START WORKER (COOKIES ENABLED) ---")
-    
-    # 1. Crea il file cookie
-    cookie_path = create_cookie_file()
+    print("\n--- 🚀 START WORKER (APIFY CLOUD INTEGRATION) ---")
     
     for handle in YOUTUBE_CHANNELS:
-        videos = get_channel_videos(handle)
+        latest_videos = get_channel_videos(handle)
         
-        for v in videos:
-            print(f"\n🔄 {v['title'][:40]}...")
+        for video in latest_videos:
+            print(f"\n🔄 Processando: {video['title'][:50]}...")
             
+            # Verifica se già presente nel DB per evitare sprechi di credito Apify/Gemini
             try:
-                if supabase.table("intelligence_feed").select("id").eq("url", v['url']).execute().data:
-                    print("   ⏭️  Già presente."); continue
+                check = supabase.table("intelligence_feed").select("id").eq("url", video['url']).execute()
+                if check.data:
+                    print("   ⏭️  Video già analizzato. Salto.")
+                    continue
             except: pass
 
-            # 2. Scarica usando il file cookie
-            text = get_transcript_ytdlp(v['url'], cookie_path)
-            method = "yt-dlp+Cookies"
+            # 1. Recupero Sottotitoli tramite Apify
+            transcript_text = get_transcript_apify(video['url'])
+            processing_method = "Apify-Cloud"
             
-            if not text:
-                print("   ⚠️ Fallback Descrizione.")
-                text = f"{v['title']}\n{v['desc']}"
-                method = "Descrizione"
-            else:
-                print("   🔥 SUBS TROVATI!")
+            if not transcript_text:
+                print("   ⚠️ Sottotitoli non trovati. Uso Descrizione come fallback.")
+                transcript_text = f"TITOLO: {video['title']}\nDESCRIZIONE: {video['desc']}"
+                processing_method = "YouTube-Description-Fallback"
 
-            # 3. Analisi e Save
-            analysis = analyze_gemini(text)
-            sid = get_source_id(v['ch_title'], v['ch_id'])
+            # 2. Analisi AI con Gemini
+            analysis_result = analyze_gemini(transcript_text)
             
-            if sid:
+            # 3. Salvataggio nel Database
+            source_id = get_source_id(video['ch_title'], video['ch_id'])
+            
+            if source_id:
                 try:
-                    supabase.table("intelligence_feed").insert({
-                        "source_id": sid, "title": v['title'], "url": v['url'],
-                        "published_at": v['date'], "content": text, "analysis": analysis,
-                        "raw_metadata": {"vid": v['id'], "method": method}
-                    }).execute()
-                    print(f"   💾 SALVATO")
+                    insert_data = {
+                        "source_id": source_id,
+                        "title": video['title'],
+                        "url": video['url'],
+                        "published_at": video['date'],
+                        "content": transcript_text,
+                        "analysis": analysis_result,
+                        "raw_metadata": {"method": processing_method, "vid": video['id']}
+                    }
+                    supabase.table("intelligence_feed").insert(insert_data).execute()
+                    print(f"   💾 SALVATO CON SUCCESSO!")
                 except Exception as e:
-                    if "duplicate" not in str(e): print(f"   ❌ DB: {e}")
+                    if "23505" in str(e):
+                        print("   ⏭️  Duplicato rilevato in fase di salvataggio.")
+                    else:
+                        print(f"   ❌ Errore inserimento DB: {e}")
             
-            print("   💤 5s...")
-            time.sleep(5)
+            # Breve pausa per non saturare le API
+            time.sleep(2)
             
-    # 4. Rimuovi il file cookie per sicurezza
-    if cookie_path and os.path.exists(cookie_path):
-        os.remove(cookie_path)
-        print("   🧹 Cookie file rimosso.")
-
-    print("\n--- ✅ FINITO ---")
+    print("\n--- ✅ WORKER COMPLETATO ---")

@@ -5,73 +5,31 @@ on:
     # Esegue ogni ora al minuto 0
     - cron: '0 * * * *'
   workflow_dispatch:
-    inputs:
-      mode:
-        description: 'Execution Mode'
-        required: false
-        default: "BACKFILL"
 
 jobs:
   run-worker:
-    # Usiamo Ubuntu 22.04 perché è il più stabile con i pacchetti Cloudflare attuali
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
-      # 1. Scarica il codice dal repository
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # 2. Prepara Python 3.11
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # 3. Installa le librerie
-      # yt-dlp: per scaricare i sottotitoli usando i cookie
-      # pysocks: essenziale per far passare yt-dlp attraverso il proxy
       - name: Install dependencies
+        # Installiamo il client ufficiale di Apify
         run: |
           pip install --upgrade pip
-          pip install yt-dlp requests google-api-python-client google-genai supabase pandas pysocks
+          pip install apify-client requests google-api-python-client google-genai supabase pandas
 
-      # 4. INSTALLAZIONE MANUALE CLOUDFLARE WARP
-      # Configura un Proxy SOCKS5 locale sulla porta 40000.
-      # Questo maschera l'IP di Azure (bloccato) con un IP residenziale Cloudflare.
-      - name: Install & Configure WARP
-        run: |
-          # Aggiunge la chiave GPG e la repository ufficiale Cloudflare
-          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
-          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
-          
-          # Installa il client
-          sudo apt-get update && sudo apt-get install -y cloudflare-warp
-
-          # Configura come Proxy SOCKS5
-          # 'registration new' registra il client anonimamente
-          echo "yes" | sudo warp-cli --accept-tos registration new
-          
-          # Imposta modalità proxy e porta
-          sudo warp-cli --accept-tos mode proxy
-          sudo warp-cli --accept-tos proxy port 40000
-          
-          # Connette alla VPN
-          sudo warp-cli --accept-tos connect
-          
-          # Attende che la connessione sia stabile
-          sleep 5
-          
-          # Test di verifica (opzionale, ma utile per debug)
-          # 'socks5h' forza la risoluzione DNS remota (più sicuro)
-          curl -x socks5h://127.0.0.1:40000 -I https://www.google.com || echo "⚠️ Warning: Proxy test check failed (ma proseguiamo)"
-
-      # 5. ESECUZIONE SCRIPT
-      # Passiamo i Secret, incluso quello CRUCIALE dei Cookie
       - name: Run worker
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          # 🔑 IL PASSPARTOUT: I cookie che hai estratto dal browser
-          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
+          # IL TOKEN DI APIFY
+          APIFY_TOKEN: ${{ secrets.API_APIFY }}
         run: python worker.py
