@@ -32,20 +32,24 @@ except Exception as e:
 
 YOUTUBE_CHANNELS = ["@InvestireBiz"]
 
-# --- 1. SCARICAMENTO SOTTOTITOLI (Proxy + Invidious) ---
+# --- 1. SCARICAMENTO SOTTOTITOLI (Proxy + Invidious Extended) ---
 def get_transcript_via_proxy(video_id: str) -> str:
     print(f"   🕵️  [SUB] Cerco sottotitoli per {video_id}...")
     
-    # Lista istanze robuste
+    # LISTA ESTESA DI ISTANZE (Per massimizzare le chance)
     instances = [
         "https://inv.nadeko.net",
         "https://invidious.jing.rocks",
         "https://yewtu.be",
         "https://vid.puffyan.us",
-        "https://inv.zzls.xyz"
+        "https://inv.zzls.xyz",
+        "https://invidious.nerdvpn.de",
+        "https://invidious.incogni.to",
+        "https://yt.drgnz.club",
+        "https://invidious.no-logs.com"
     ]
     
-    # Proxy SOCKS5h (Risoluzione DNS remota per privacy totale)
+    # Proxy SOCKS5h (Risoluzione DNS remota)
     proxies = {
         "http": "socks5h://127.0.0.1:40000",
         "https": "socks5h://127.0.0.1:40000"
@@ -54,7 +58,7 @@ def get_transcript_via_proxy(video_id: str) -> str:
     for instance in instances:
         try:
             # Timeout breve per scorrere veloce
-            res = requests.get(f"{instance}/api/v1/captions/{video_id}", proxies=proxies, timeout=8)
+            res = requests.get(f"{instance}/api/v1/captions/{video_id}", proxies=proxies, timeout=5)
             
             if res.status_code != 200: continue
             
@@ -75,7 +79,8 @@ def get_transcript_via_proxy(video_id: str) -> str:
 
             if target:
                 print(f"      ⬇️  Trovato su {instance}. Scarico...")
-                text_res = requests.get(f"{instance}{target['url']}", proxies=proxies, timeout=10)
+                full_url = f"{instance}{target['url']}"
+                text_res = requests.get(full_url, proxies=proxies, timeout=10)
                 
                 if text_res.status_code == 200:
                     raw_text = text_res.text
@@ -98,9 +103,10 @@ def get_transcript_via_proxy(video_id: str) -> str:
                         return clean_text
 
         except Exception:
+            # print(f"Debug: fail su {instance}") # Decommenta se vuoi vedere i fallimenti
             continue
             
-    print("   ⚠️ Sottotitoli non trovati.")
+    print("   ⚠️ Sottotitoli non trovati (Fallback Descrizione).")
     return ""
 
 # --- 2. ANALISI GEMINI (Con Retry 429) ---
@@ -112,7 +118,7 @@ def analyze_gemini(text: str) -> dict:
     for attempt in range(3): # 3 Tentativi
         try:
             res = gemini_client.models.generate_content(
-                model="gemini-flash-latest",
+                model="gemini-2.0-flash",
                 contents=f'Analizza JSON: {{ "summary": "Riassunto dettagliato", "risk_level": "LOW", "countries_involved": [], "key_takeaway": "Punto chiave" }}\nTEXT:{text[:25000]}',
                 config=types.GenerateContentConfig(response_mime_type="application/json")
             )
@@ -128,7 +134,7 @@ def analyze_gemini(text: str) -> dict:
                 return {}
     return {}
 
-# --- 3. GESTIONE DB (Fix Constraints) ---
+# --- 3. GESTIONE DB (Source ID) ---
 def get_source_id(name, ch_id):
     try:
         # Check esistenza
@@ -140,10 +146,10 @@ def get_source_id(name, ch_id):
         # Creazione Nuova Source
         print("      ➕ Creo nuova source nel DB...")
         
-        # ⚠️ FIX IMPORTANTE: 'type' deve essere 'youtube', NON 'yt'
+        # type='youtube' è corretto per il tuo DB
         new = supabase.table("sources").insert({
             "name": name, 
-            "type": "youtube",   # <--- FIX SQL CONSTRAINT
+            "type": "youtube",
             "base_url": ch_id
         }).execute()
         
@@ -177,7 +183,7 @@ def get_channel_videos(handle):
 
 # --- MAIN LOOP ---
 if __name__ == "__main__":
-    print("\n--- 🚀 START WORKER (FIX SQL + RETRY) ---")
+    print("\n--- 🚀 START WORKER (OPTIMIZED) ---")
     
     for handle in YOUTUBE_CHANNELS:
         videos = get_channel_videos(handle)
@@ -185,11 +191,12 @@ if __name__ == "__main__":
         for v in videos:
             print(f"\n🔄 {v['title'][:40]}...")
             
-            # Check DB
+            # Check DB Preliminare (Per risparmiare API Gemini)
             try:
                 exists = supabase.table("intelligence_feed").select("id").eq("url", v['url']).execute()
-                if exists.data:
-                    print("   ⏭️  Già salvato.")
+                exists_data = cast(List[Dict[str, Any]], exists.data)
+                if exists_data:
+                    print("   ⏭️  Video già analizzato. Salto.")
                     continue
             except: pass
 
@@ -197,7 +204,6 @@ if __name__ == "__main__":
             text = get_transcript_via_proxy(v['id'])
             method = "Invidious+Proxy"
             if not text:
-                print("   ⚠️ Fallback Descrizione.")
                 text = f"{v['title']}\n{v['desc']}"
                 method = "Descrizione"
             
@@ -219,11 +225,15 @@ if __name__ == "__main__":
                         "raw_metadata": {"vid": v['id'], "method": method}
                     }
                     supabase.table("intelligence_feed").insert(data).execute()
-                    print(f"   💾 SALVATO!")
+                    print(f"   💾 SALVATO CON SUCCESSO!")
                 except Exception as e:
-                    print(f"   ❌ ERRORE INSERT: {e}")
+                    # Gestione elegante dell'errore duplicato
+                    if "23505" in str(e) or "duplicate key" in str(e):
+                         print("   ⏭️  Già presente (rilevato all'inserimento).")
+                    else:
+                        print(f"   ❌ ERRORE INSERT: {e}")
             
-            # Pausa anti-ban Gemini
+            # Pausa anti-ban
             print("   💤 Pause 10s...")
             time.sleep(10)
             
