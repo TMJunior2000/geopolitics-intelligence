@@ -2,10 +2,9 @@ import os
 import json
 import time
 import requests
-import datetime as dt
 from datetime import datetime
 
-# Usiamo la libreria ufficiale (ora funzionerà grazie alla VPN)
+# Importiamo la libreria
 from youtube_transcript_api import YouTubeTranscriptApi
 from googleapiclient.discovery import build
 from google import genai
@@ -26,33 +25,48 @@ youtube_service = build('youtube', 'v3', developerKey=GOOGLE_API_KEY)
 
 YOUTUBE_CHANNELS = ["@InvestireBiz"]
 
-# --- FUNZIONE RECUPERO TESTO (API UFFICIALE SOTTO VPN) ---
+# --- FUNZIONE RECUPERO TESTO CORRETTA ---
 def get_transcript(video_id: str) -> str:
-    print("   Trying Official Transcript API (via WARP VPN)...")
+    print(f"   🕵️  Scarico sottotitoli per {video_id} (via WARP VPN)...")
     try:
-        # Recupera la lista dei sottotitoli
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        # 1. ISTANZIA L'OGGETTO (Correzione Fondamentale)
+        # La tua classe richiede di essere inizializzata prima dell'uso.
+        ytt = YouTubeTranscriptApi()
         
+        # 2. CHIAMA IL METODO DELL'ISTANZA (.list invece di .list_transcripts)
+        transcript_list = ytt.list(video_id)
+        
+        transcript = None
         try:
-            # Cerca manuale o autogenerato in Italiano o Inglese
+            # Cerca IT o EN
             transcript = transcript_list.find_transcript(['it', 'en'])
         except:
-            # Se c'è in altra lingua (es. russo/cinese), traducilo in ITA
-            transcript = next(iter(transcript_list)).translate('it')
+            # Fallback: Traduci il primo disponibile
+            try:
+                first = next(iter(transcript_list))
+                transcript = first.translate('it')
+            except:
+                pass
+
+        if transcript:
+            data = transcript.fetch()
+            # Unisce il testo gestendo sia oggetti che dizionari
+            full_text = ""
+            parts = []
+            for i in data:
+                if isinstance(i, dict):
+                    parts.append(i.get('text', ''))
+                elif hasattr(i, 'text'):
+                    parts.append(i.text)
             
-        data = transcript.fetch()
-        
-        # Unisce il testo
-        full_text = " ".join([i['text'] for i in data])
-        
-        if full_text:
-            print("   ✅ Successo!")
-            return full_text
-            
+            full_text = " ".join(parts)
+            if full_text:
+                print("   ✅ Successo!")
+                return full_text
+
     except Exception as e:
-        print(f"   ⚠️ Errore API: {e}")
-        return ""
-    
+        print(f"   ⚠️ Errore Transcript: {e}")
+        
     return ""
 
 # --- ANALISI ---
@@ -110,14 +124,14 @@ def get_channel_videos(handle):
 
 # --- MAIN ---
 if __name__ == "__main__":
-    print("--- 🚀 START WORKER (VPN MODE) ---")
+    print("--- 🚀 START WORKER (WARP + INSTANCE FIX) ---")
     for handle in YOUTUBE_CHANNELS:
         for v in get_channel_videos(handle):
             if url_exists(v['url']): continue
             
             print(f"🔄 {v['title'][:40]}...")
             
-            # 1. RECUPERO TESTO
+            # 1. TESTO (API UFFICIALE + VPN)
             text = get_transcript(v['id'])
             method = "Transcript API"
             
@@ -127,7 +141,7 @@ if __name__ == "__main__":
                 text = f"{v['title']}\n{v['desc']}"
                 method = "Descrizione"
             
-            # 3. ANALISI & SAVE
+            # 3. SALVA
             analysis = analyze_gemini(text)
             sid = get_source_id(v['ch_title'], v['ch_id'])
             

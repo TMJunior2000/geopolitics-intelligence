@@ -16,8 +16,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # --- 🛡️ LA SOLUZIONE AL BLOCCO: CLOUDFLARE WARP VPN ---
-      # Questo cambia l'IP di GitHub e ci permette di accedere a YouTube
+      # 🛡️ VPN CLOUDFLARE: Maschera l'IP per evitare il blocco YouTube
       - name: Setup WARP
         uses: fscarmen/warp-on-actions@v1.3
         with:
@@ -31,7 +30,6 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          # Ora che abbiamo la VPN, usiamo la libreria ufficiale che è la più affidabile
           pip install youtube-transcript-api requests google-api-python-client google-genai supabase pandas
 
       - name: Run worker
