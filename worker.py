@@ -4,6 +4,7 @@ import time
 import requests
 import traceback
 from datetime import datetime
+from typing import cast, List, Dict, Any  # <--- IMPORT NECESSARIO PER IL FIX
 
 from googleapiclient.discovery import build
 from google import genai
@@ -36,7 +37,6 @@ YOUTUBE_CHANNELS = ["@InvestireBiz"]
 def get_transcript_via_proxy(video_id: str) -> str:
     print(f"\n   🕵️  [DEBUG] Avvio ricerca sottotitoli per: {video_id}")
     
-    # Lista istanze
     instances = [
         "https://inv.tux.pizza",
         "https://invidious.drgns.space",
@@ -46,7 +46,6 @@ def get_transcript_via_proxy(video_id: str) -> str:
     ]
     
     # CONFIGURAZIONE PROXY (WARP LOCALE)
-    # Fondamentale: socks5h fa risolvere i DNS a Cloudflare
     proxies = {
         "http": "socks5h://127.0.0.1:40000",
         "https": "socks5h://127.0.0.1:40000"
@@ -58,7 +57,6 @@ def get_transcript_via_proxy(video_id: str) -> str:
             print(f"   👉 [DEBUG] Tento istanza: {instance} ...")
             url_list = f"{instance}/api/v1/captions/{video_id}"
             
-            # Request 1: Lista Sottotitoli
             t_start = time.time()
             res = requests.get(url_list, proxies=proxies, timeout=10)
             elapsed = time.time() - t_start
@@ -81,7 +79,6 @@ def get_transcript_via_proxy(video_id: str) -> str:
             
             print(f"      ✅ Trovati {len(captions)} sottotitoli disponibili.")
 
-            # Selezione Lingua
             target = None
             # 1. Cerca Italiano
             for c in captions:
@@ -107,14 +104,12 @@ def get_transcript_via_proxy(video_id: str) -> str:
                 full_url = f"{instance}{target['url']}"
                 print(f"      ⬇️  Scarico testo da: {full_url}")
                 
-                # Request 2: Testo
                 text_res = requests.get(full_url, proxies=proxies, timeout=10)
                 
                 if text_res.status_code == 200:
                     raw_text = text_res.text
                     clean_text = ""
                     
-                    # Parsing JSON vs VTT
                     if raw_text.strip().startswith('{') or raw_text.strip().startswith('['):
                         print("      [PARSING] Rilevato formato JSON.")
                         try:
@@ -127,7 +122,6 @@ def get_transcript_via_proxy(video_id: str) -> str:
                             l.strip() for l in raw_text.splitlines() 
                             if "-->" not in l and l.strip() and not l.startswith(("WEBVTT", "NOTE", "Kind:", "Language:"))
                         ]
-                        # Deduplica
                         clean_lines = []
                         for l in lines:
                             if not clean_lines or clean_lines[-1] != l:
@@ -175,19 +169,29 @@ def get_source_id(name, ch_id):
     print(f"   🔎 [DB] Cerco source: {name}")
     try:
         res = supabase.table("sources").select("id").eq("name", name).execute()
-        if res.data: 
-            sid = str(res.data[0]['id'])
+        
+        # --- FIX PYLANCE: Casting esplicito ---
+        data = cast(List[Dict[str, Any]], res.data)
+        
+        if data and len(data) > 0:
+            sid = str(data[0]['id'])
             print(f"      ✅ Trovata ID: {sid}")
             return sid
         
         print("      ➕ Creo nuova source...")
         new = supabase.table("sources").insert({"name": name, "type": "yt", "base_url": ch_id}).execute()
-        if new.data:
-            sid = str(new.data[0]['id'])
+        
+        # --- FIX PYLANCE: Casting esplicito ---
+        new_data = cast(List[Dict[str, Any]], new.data)
+        
+        if new_data and len(new_data) > 0:
+            sid = str(new_data[0]['id'])
             print(f"      ✅ Creata ID: {sid}")
             return sid
+            
     except Exception as e:
         print(f"   ❌ [DB ERROR] get_source_id: {e}")
+        traceback.print_exc()
     return None
 
 def get_channel_videos(handle):
@@ -221,7 +225,7 @@ def get_channel_videos(handle):
 
 # --- MAIN ---
 if __name__ == "__main__":
-    print("\n--- 🚀 START WORKER (DEBUG MODE) ---")
+    print("\n--- 🚀 START WORKER (DEBUG + TYPE FIX) ---")
     
     for handle in YOUTUBE_CHANNELS:
         videos = get_channel_videos(handle)
@@ -229,10 +233,12 @@ if __name__ == "__main__":
         for v in videos:
             print(f"\n🔄 [PROCESSING] {v['title'][:50]}...")
             
-            # Check esistenza
+            # Check esistenza con FIX PYLANCE
             try:
                 exists = supabase.table("intelligence_feed").select("id").eq("url", v['url']).execute()
-                if exists.data:
+                exists_data = cast(List[Dict[str, Any]], exists.data)
+                
+                if exists_data and len(exists_data) > 0:
                     print("   ⏭️  Già presente nel DB. Salto.")
                     continue
             except Exception as e:
@@ -267,8 +273,11 @@ if __name__ == "__main__":
                     }
                     res = supabase.table("intelligence_feed").insert(data).execute()
                     
-                    if res.data:
-                        print(f"   ✅ [SUCCESS] Salvato con ID: {res.data[0]['id']}")
+                    # Fix Pylance anche qui
+                    res_data = cast(List[Dict[str, Any]], res.data)
+
+                    if res_data and len(res_data) > 0:
+                        print(f"   ✅ [SUCCESS] Salvato con ID: {res_data[0]['id']}")
                     else:
                         print("   ❓ [WARNING] Insert eseguito ma nessun dato ritornato (RLS attivo?).")
                         
@@ -278,6 +287,6 @@ if __name__ == "__main__":
             else:
                 print("   ❌ [ERROR] Source ID mancante, impossibile salvare.")
             
-            time.sleep(1) # Un po' di respiro
+            time.sleep(1)
             
     print("\n--- ✅ WORKER FINISHED ---")
