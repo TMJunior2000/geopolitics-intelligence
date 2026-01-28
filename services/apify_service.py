@@ -31,7 +31,7 @@ class ApifyService:
                             txt = segment.get("text") or segment.get("caption") or segment.get("transcript")
                             if txt: full_text.append(str(txt))
                             
-                # Caso Stringa diretta
+                # Caso Stringa 
                 elif isinstance(data_content, str):
                     full_text.append(data_content)
                 
