@@ -10,18 +10,13 @@ from google.genai import types
 from supabase import create_client, Client
 
 # --- CONFIGURAZIONE ---
-print("\n🔧 [INIT] Avvio script (APIFY MODE)...")
+print("\n🔧 [INIT] Avvio script (APIFY TRANSCRIPT MODE)...")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 APIFY_TOKEN = os.getenv("APIFY_TOKEN")
 
-if not all([SUPABASE_URL, SUPABASE_KEY, GOOGLE_API_KEY, APIFY_TOKEN]):
-    print("❌ ERRORE: Variabili d'ambiente mancanti.")
-    exit(1)
-
 try:
-    # Cast esplicito per evitare errori di tipo None su supabase
     supabase: Client = create_client(cast(str, SUPABASE_URL), cast(str, SUPABASE_KEY))
     gemini_client = genai.Client(api_key=GOOGLE_API_KEY)
     youtube_service = build('youtube', 'v3', developerKey=GOOGLE_API_KEY)
@@ -33,31 +28,36 @@ except Exception as e:
 
 YOUTUBE_CHANNELS = ["@InvestireBiz"]
 
-# --- ESTRAZIONE TRASCRIZIONE CON APIFY ---
+# --- ESTRAZIONE TRASCRIZIONE ---
 def get_transcript_apify(video_url: str) -> str:
-    print(f"   ☁️ [APIFY] Richiesta trascrizione per: {video_url}...")
+    """Estrae il testo del video usando microworlds/youtube-transcript-scraper"""
+    print(f"   ☁️ [APIFY] Estrazione testo: {video_url}...")
+    
+    # Questo actor è specifico per i sottotitoli, veloce ed economico
+    actor_id = "microworlds/youtube-transcript-scraper"
     
     run_input = {
         "videoUrls": [video_url],
-        "subtitlesLanguage": "it",
-        "addVideoMetadata": False
     }
 
     try:
-        run = apify_client.actor("stream_99/youtube-transcript-scraper").call(run_input=run_input)
+        # Avvia l'actor
+        run = apify_client.actor(actor_id).call(run_input=run_input)
         if not run: return ""
         
-        transcript_text = ""
-        # iterate_items restituisce un generatore di oggetti, dobbiamo assicurarci che siano dict
+        full_text = ""
+        # Recupera i risultati dal dataset
         for item in apify_client.dataset(run["defaultDatasetId"]).iterate_items():
             if isinstance(item, dict):
-                # Usiamo .get() invece delle parentesi quadre per sicurezza
-                transcript_text = item.get("transcript") or item.get("text") or ""
-                if transcript_text: break
+                # Questo actor restituisce il testo nel campo 'transcript' o 'text'
+                text_part = item.get("transcript") or item.get("text")
+                if text_part:
+                    full_text += str(text_part) + " "
         
-        if transcript_text:
-            print(f"      ✅ Trascrizione ottenuta ({len(transcript_text)} chars)")
-            return str(transcript_text)
+        clean_text = full_text.strip()
+        if clean_text:
+            print(f"      ✅ Testo estratto ({len(clean_text)} caratteri)")
+            return clean_text
         return ""
 
     except Exception as e:
@@ -68,39 +68,27 @@ def get_transcript_apify(video_url: str) -> str:
 def analyze_gemini(text: str) -> dict:
     if not text or len(text) < 50: return {"summary": "N/A"}
     print(f"   🧠 [AI] Analisi con Gemini...")
-    for attempt in range(3):
-        try:
-            res = gemini_client.models.generate_content(
-                model="gemini-flash-latest",
-                contents=f'Analizza JSON: {{ "summary": "Riassunto", "risk_level": "LOW", "countries_involved": [], "key_takeaway": "Main" }}\nTEXT:{text[:28000]}',
-                config=types.GenerateContentConfig(response_mime_type="application/json")
-            )
-            # res.text può essere None, quindi usiamo un fallback
-            text_response = res.text or "{}"
-            return cast(dict, json.loads(text_response.strip()))
-        except Exception as e:
-            if "429" in str(e): 
-                time.sleep(35)
-            else: return {}
-    return {}
+    try:
+        res = gemini_client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=f'Analizza il testo e restituisci JSON: {{ "summary": "...", "risk_level": "LOW", "countries_involved": [], "key_takeaway": "..." }}\nTESTO:{text[:28000]}',
+            config=types.GenerateContentConfig(response_mime_type="application/json")
+        )
+        return cast(dict, json.loads(res.text.strip() if res.text else "{}"))
+    except:
+        return {}
 
 # --- GESTIONE DB ---
 def get_source_id(name: str, ch_id: str) -> Optional[str]:
     try:
-        # Specifichiamo a Pylance che res.data è una lista di dizionari
         res = supabase.table("sources").select("id").eq("name", name).execute()
         data = cast(List[Dict[str, Any]], res.data)
-        
-        if data and len(data) > 0: 
-            return str(data[0].get('id'))
+        if data: return str(data[0].get('id'))
         
         new = supabase.table("sources").insert({"name": name, "type": "youtube", "base_url": ch_id}).execute()
         new_data = cast(List[Dict[str, Any]], new.data)
-        
-        if new_data and len(new_data) > 0: 
-            return str(new_data[0].get('id'))
-    except Exception as e:
-        print(f"   ❌ Errore Source ID: {e}")
+        if new_data: return str(new_data[0].get('id'))
+    except: return None
     return None
 
 def get_channel_videos(handle: str) -> List[Dict[str, Any]]:
@@ -114,20 +102,19 @@ def get_channel_videos(handle: str) -> List[Dict[str, Any]]:
         ch_id = items[0]['id']
         upl_id = items[0]['contentDetails']['relatedPlaylists']['uploads']
         
-        pl = youtube_service.playlistItems().list(part="snippet", playlistId=upl_id, maxResults=5).execute()
+        pl = youtube_service.playlistItems().list(part="snippet", playlistId=upl_id, maxResults=3).execute()
         for i in pl.get('items', []):
             snippet = i.get('snippet', {})
-            vid_id = snippet.get('resourceId', {}).get('videoId')
+            v_id = snippet.get('resourceId', {}).get('videoId')
             videos.append({
-                "id": vid_id,
+                "id": v_id,
                 "title": snippet.get('title'),
                 "desc": snippet.get('description'),
                 "date": snippet.get('publishedAt'),
-                "url": f"https://www.youtube.com/watch?v={vid_id}",
+                "url": f"https://www.youtube.com/watch?v={v_id}",
                 "ch_title": ch_title, "ch_id": ch_id
             })
-    except Exception as e:
-        print(f"❌ Errore YouTube API: {e}")
+    except: pass
     return videos
 
 # --- MAIN ---
@@ -138,24 +125,29 @@ if __name__ == "__main__":
         videos = get_channel_videos(handle)
         
         for v in videos:
-            print(f"\n🔄 Video: {v['title'][:40]}...")
+            print(f"\n🔄 Video: {v['title'][:50]}...")
             
+            # Controllo duplicati
             try:
                 check = supabase.table("intelligence_feed").select("id").eq("url", v['url']).execute()
-                if check.data and len(cast(list, check.data)) > 0:
+                if check.data:
                     print("   ⏭️  Già presente."); continue
             except: pass
 
+            # 1. Scraping Trascrizione con Apify
             text = get_transcript_apify(v['url'])
             method = "Apify-Transcript"
             
             if not text:
+                print("   ⚠️ Sottotitoli non trovati. Uso la descrizione.")
                 text = f"{v['title']}\n{v['desc']}"
                 method = "YouTube-Description"
 
+            # 2. Analisi AI
             analysis = analyze_gemini(text)
-            sid = get_source_id(str(v['ch_title']), str(v['ch_id']))
             
+            # 3. Salvataggio
+            sid = get_source_id(str(v['ch_title']), str(v['ch_id']))
             if sid:
                 try:
                     supabase.table("intelligence_feed").insert({
@@ -169,7 +161,7 @@ if __name__ == "__main__":
                     }).execute()
                     print(f"   💾 SALVATO")
                 except Exception as e:
-                    print(f"   ❌ DB: {e}")
+                    print(f"   ❌ Errore DB: {e}")
             
             time.sleep(2)
 
