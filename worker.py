@@ -34,8 +34,7 @@ def get_transcript_apify(video_url: str) -> str:
     print(f"   ☁️ [APIFY] Estrazione testo: {video_url}...")
     
     # Questo actor è specifico per i sottotitoli, veloce ed economico
-    actor_id = "microworlds/youtube-transcript-scraper"
-    
+    actor_id = "pintostudio/youtube-transcript-scraper"
     run_input = {
         "videoUrls": [video_url],
     }
