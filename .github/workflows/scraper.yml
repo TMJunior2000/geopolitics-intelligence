@@ -1,32 +1,48 @@
-name: Geopolitics Scraper (Apify)
+name: Geopolitics Scraper (Production)
 
 on:
   schedule:
-    - cron: '0 * * * *' # Esegue ogni ora
-  workflow_dispatch:
+    - cron: '0 * * * *' # Esegue ogni ora in modalità LIVE (default)
+  
+  workflow_dispatch: # Permette l'avvio manuale con opzioni
+    inputs:
+      mode:
+        description: 'Seleziona modalità esecuzione'
+        required: true
+        default: 'LIVE'
+        type: choice
+        options:
+        - LIVE
+        - BACKFILL
 
 jobs:
   run-worker:
+    name: Run Worker (${{ inputs.mode || 'LIVE' }})
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: 📥 Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: 🐍 Setup Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: 'pip'
 
-      - name: Install dependencies
+      - name: 📦 Install dependencies
         run: |
           pip install --upgrade pip
-          pip install apify-client google-api-python-client google-genai supabase
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Run worker
+      - name: 🚀 Run Worker Pipeline
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          APIFY_TOKEN: ${{ secrets.API_APIFY }} # <--- Assicurati di aggiungere questo nei Secrets!
+          APIFY_TOKEN: ${{ secrets.API_APIFY }}
+          # QUI AVVIENE LA MAGIA:
+          # Se il workflow è manuale, usa l'input scelto.
+          # Se è automatico (cron), 'inputs.mode' è vuoto, quindi usa 'LIVE'.
+          WORKER_MODE: ${{ inputs.mode || 'LIVE' }} 
         run: python worker.py

@@ -11,7 +11,7 @@ class Config:
     APIFY_TOKEN: str = os.getenv("APIFY_TOKEN", "")
     
     # Canali da monitorare
-    YOUTUBE_HANDLES: List[str] = ["@InvestireBiz"]
+    YOUTUBE_HANDLES: List[str] = ["@InvestireBiz", "@investirebiz-analisi"] #  "@Market.Mind.trading"
     
     # Limiti
     MAX_CHARS_AI: int = 150000 # Ampia finestra per Gemini 2.0 Flash
