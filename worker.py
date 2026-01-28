@@ -1,32 +1,30 @@
 import os
 import json
 import time
-from typing import cast, List, Dict, Any
+from typing import cast, List, Dict, Any, Optional
 
-# Libreria Apify
 from apify_client import ApifyClient
-
 from googleapiclient.discovery import build
 from google import genai
 from google.genai import types
 from supabase import create_client, Client
 
-# --- SETUP ---
+# --- CONFIGURAZIONE ---
 print("\n🔧 [INIT] Avvio script (APIFY MODE)...")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 APIFY_TOKEN = os.getenv("APIFY_TOKEN")
 
-if not SUPABASE_URL or not SUPABASE_KEY or not GOOGLE_API_KEY or not APIFY_TOKEN:
-    print("❌ ERRORE: Variabili mancanti (serve APIFY_TOKEN).")
+if not all([SUPABASE_URL, SUPABASE_KEY, GOOGLE_API_KEY, APIFY_TOKEN]):
+    print("❌ ERRORE: Variabili d'ambiente mancanti.")
     exit(1)
 
 try:
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    # Cast esplicito per evitare errori di tipo None su supabase
+    supabase: Client = create_client(cast(str, SUPABASE_URL), cast(str, SUPABASE_KEY))
     gemini_client = genai.Client(api_key=GOOGLE_API_KEY)
     youtube_service = build('youtube', 'v3', developerKey=GOOGLE_API_KEY)
-    # Init Apify
     apify_client = ApifyClient(APIFY_TOKEN)
     print("✅ Client inizializzati.")
 except Exception as e:
@@ -35,147 +33,144 @@ except Exception as e:
 
 YOUTUBE_CHANNELS = ["@InvestireBiz"]
 
-# --- FUNZIONE TRASCRITTO (APIFY) ---
+# --- ESTRAZIONE TRASCRIZIONE CON APIFY ---
 def get_transcript_apify(video_url: str) -> str:
-    print(f"   🤖 [APIFY] Chiedo trascrizione per {video_url}...")
-    
-    # Questo attore è specifico per i transcript e costa pochissimo
-    actor_id = "undoshort/youtube-transcript-scraper"
+    print(f"   ☁️ [APIFY] Richiesta trascrizione per: {video_url}...")
     
     run_input = {
         "videoUrls": [video_url],
-        "preferredLanguage": "it",
-        "fallbackLanguage": "en",
-        "includeTimestamps": False
+        "subtitlesLanguage": "it",
+        "addVideoMetadata": False
     }
 
     try:
-        # 1. Avvia l'attore sui server Apify
-        run = apify_client.actor(actor_id).call(run_input=run_input)
+        run = apify_client.actor("stream_99/youtube-transcript-scraper").call(run_input=run_input)
+        if not run: return ""
         
-        # 2. Recupera i risultati dal dataset
-        dataset_items = apify_client.dataset(run["defaultDatasetId"]).list_items().items
+        transcript_text = ""
+        # iterate_items restituisce un generatore di oggetti, dobbiamo assicurarci che siano dict
+        for item in apify_client.dataset(run["defaultDatasetId"]).iterate_items():
+            if isinstance(item, dict):
+                # Usiamo .get() invece delle parentesi quadre per sicurezza
+                transcript_text = item.get("transcript") or item.get("text") or ""
+                if transcript_text: break
         
-        if dataset_items:
-            # Prende il primo risultato
-            item = dataset_items[0]
-            text = item.get("text") or item.get("transcript") or ""
-            
-            # Se è una lista di segmenti, uniscili
-            if isinstance(text, list):
-                text = " ".join([seg.get('text', '') for seg in text if 'text' in seg])
-            
-            if len(text) > 50:
-                print(f"      ✅ Testo ricevuto: {len(text)} caratteri.")
-                return text
-            else:
-                print("      ⚠️ Apify ok, ma testo vuoto.")
-        else:
-            print("      ⚠️ Nessun dato restituito da Apify.")
-            
+        if transcript_text:
+            print(f"      ✅ Trascrizione ottenuta ({len(transcript_text)} chars)")
+            return str(transcript_text)
+        return ""
+
     except Exception as e:
         print(f"      ❌ Errore Apify: {e}")
-        
-    return ""
+        return ""
 
 # --- ANALISI GEMINI ---
 def analyze_gemini(text: str) -> dict:
     if not text or len(text) < 50: return {"summary": "N/A"}
-    print(f"   🧠 [AI] Invio {len(text)} chars...")
+    print(f"   🧠 [AI] Analisi con Gemini...")
     for attempt in range(3):
         try:
             res = gemini_client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-flash-latest",
                 contents=f'Analizza JSON: {{ "summary": "Riassunto", "risk_level": "LOW", "countries_involved": [], "key_takeaway": "Main" }}\nTEXT:{text[:28000]}',
                 config=types.GenerateContentConfig(response_mime_type="application/json")
             )
-            return json.loads(res.text.replace("```json","").replace("```","").strip())
+            # res.text può essere None, quindi usiamo un fallback
+            text_response = res.text or "{}"
+            return cast(dict, json.loads(text_response.strip()))
         except Exception as e:
             if "429" in str(e): 
-                print("      ⚠️ Quota AI 429. Wait 35s...")
                 time.sleep(35)
             else: return {}
     return {}
 
-# --- DB UTILS ---
-def get_source_id(name, ch_id):
+# --- GESTIONE DB ---
+def get_source_id(name: str, ch_id: str) -> Optional[str]:
     try:
+        # Specifichiamo a Pylance che res.data è una lista di dizionari
         res = supabase.table("sources").select("id").eq("name", name).execute()
         data = cast(List[Dict[str, Any]], res.data)
-        if data: return str(data[0]['id'])
         
-        new = supabase.table("sources").insert({
-            "name": name, "type": "youtube", "base_url": ch_id
-        }).execute()
+        if data and len(data) > 0: 
+            return str(data[0].get('id'))
+        
+        new = supabase.table("sources").insert({"name": name, "type": "youtube", "base_url": ch_id}).execute()
         new_data = cast(List[Dict[str, Any]], new.data)
-        if new_data: return str(new_data[0]['id'])
-    except: pass
+        
+        if new_data and len(new_data) > 0: 
+            return str(new_data[0].get('id'))
+    except Exception as e:
+        print(f"   ❌ Errore Source ID: {e}")
     return None
 
-def get_channel_videos(handle):
+def get_channel_videos(handle: str) -> List[Dict[str, Any]]:
     videos = []
     try:
         res = youtube_service.channels().list(part="contentDetails,snippet", forHandle=handle).execute()
-        if not res.get('items'): return []
-        upl = res['items'][0]['contentDetails']['relatedPlaylists']['uploads']
-        ch_title = res['items'][0]['snippet']['title']
-        ch_id = res['items'][0]['id']
-        pl = youtube_service.playlistItems().list(part="snippet", playlistId=upl, maxResults=5).execute()
+        items = res.get('items', [])
+        if not items: return []
+        
+        ch_title = items[0]['snippet']['title']
+        ch_id = items[0]['id']
+        upl_id = items[0]['contentDetails']['relatedPlaylists']['uploads']
+        
+        pl = youtube_service.playlistItems().list(part="snippet", playlistId=upl_id, maxResults=5).execute()
         for i in pl.get('items', []):
+            snippet = i.get('snippet', {})
+            vid_id = snippet.get('resourceId', {}).get('videoId')
             videos.append({
-                "id": i['snippet']['resourceId']['videoId'],
-                "title": i['snippet']['title'],
-                "desc": i['snippet']['description'],
-                "date": i['snippet']['publishedAt'],
-                "url": f"https://www.youtube.com/watch?v={i['snippet']['resourceId']['videoId']}",
+                "id": vid_id,
+                "title": snippet.get('title'),
+                "desc": snippet.get('description'),
+                "date": snippet.get('publishedAt'),
+                "url": f"https://www.youtube.com/watch?v={vid_id}",
                 "ch_title": ch_title, "ch_id": ch_id
             })
-    except: pass
+    except Exception as e:
+        print(f"❌ Errore YouTube API: {e}")
     return videos
 
 # --- MAIN ---
 if __name__ == "__main__":
-    print("\n--- 🚀 START WORKER (APIFY) ---")
+    print("\n--- 🚀 START WORKER ---")
     
     for handle in YOUTUBE_CHANNELS:
         videos = get_channel_videos(handle)
         
         for v in videos:
-            print(f"\n🔄 {v['title'][:40]}...")
+            print(f"\n🔄 Video: {v['title'][:40]}...")
             
             try:
-                if supabase.table("intelligence_feed").select("id").eq("url", v['url']).execute().data:
+                check = supabase.table("intelligence_feed").select("id").eq("url", v['url']).execute()
+                if check.data and len(cast(list, check.data)) > 0:
                     print("   ⏭️  Già presente."); continue
             except: pass
 
-            # 1. APIFY
             text = get_transcript_apify(v['url'])
-            method = "Apify"
+            method = "Apify-Transcript"
             
             if not text:
-                print("   ⚠️ Fallback Descrizione.")
                 text = f"{v['title']}\n{v['desc']}"
-                method = "Descrizione"
-            else:
-                print("   🔥 SUBS RECUPERATI!")
+                method = "YouTube-Description"
 
-            # 2. AI
             analysis = analyze_gemini(text)
+            sid = get_source_id(str(v['ch_title']), str(v['ch_id']))
             
-            # 3. DB
-            sid = get_source_id(v['ch_title'], v['ch_id'])
             if sid:
                 try:
                     supabase.table("intelligence_feed").insert({
-                        "source_id": sid, "title": v['title'], "url": v['url'],
-                        "published_at": v['date'], "content": text, "analysis": analysis,
+                        "source_id": sid,
+                        "title": v['title'],
+                        "url": v['url'],
+                        "published_at": v['date'],
+                        "content": text,
+                        "analysis": analysis,
                         "raw_metadata": {"vid": v['id'], "method": method}
                     }).execute()
                     print(f"   💾 SALVATO")
                 except Exception as e:
-                    if "duplicate" not in str(e): print(f"   ❌ DB: {e}")
+                    print(f"   ❌ DB: {e}")
             
-            print("   💤 2s...")
             time.sleep(2)
-            
+
     print("\n--- ✅ FINITO ---")

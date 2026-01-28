@@ -1,9 +1,8 @@
-name: Geopolitics Scraper
+name: Geopolitics Scraper (Apify)
 
 on:
   schedule:
-    # Esegue ogni ora al minuto 0
-    - cron: '0 * * * *'
+    - cron: '0 * * * *' # Esegue ogni ora
   workflow_dispatch:
 
 jobs:
@@ -20,16 +19,14 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        # Installiamo il client ufficiale di Apify
         run: |
           pip install --upgrade pip
-          pip install apify-client requests google-api-python-client google-genai supabase pandas
+          pip install apify-client google-api-python-client google-genai supabase
 
       - name: Run worker
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          # IL TOKEN DI APIFY
-          APIFY_TOKEN: ${{ secrets.API_APIFY }}
+          APIFY_TOKEN: ${{ secrets.API_APIFY }} # <--- Assicurati di aggiungere questo nei Secrets!
         run: python worker.py
