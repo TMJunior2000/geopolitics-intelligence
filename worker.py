@@ -3,8 +3,6 @@ import json
 import time
 import glob
 import re
-import requests
-from datetime import datetime
 from typing import cast, List, Dict, Any
 
 import yt_dlp
@@ -13,21 +11,20 @@ from google import genai
 from google.genai import types
 from supabase import create_client, Client
 
-# --- CONFIG ---
+# --- CONFIGURAZIONE ---
 print("\n🔧 [INIT] Avvio script (COOKIES AUTH MODE)...")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-YOUTUBE_COOKIES = os.getenv("YOUTUBE_COOKIES") # <--- NUOVO SECRET
+YOUTUBE_COOKIES = os.getenv("YOUTUBE_COOKIES") # <--- IL PASSPARTOUT
 
 if not SUPABASE_URL or not SUPABASE_KEY or not GOOGLE_API_KEY:
-    print("❌ ERRORE: Variabili mancanti (URL, KEY, GOOGLE_API).")
+    print("❌ ERRORE: Variabili mancanti.")
     exit(1)
 
 if not YOUTUBE_COOKIES:
-    print("⚠️ WARNING: Secret 'YOUTUBE_COOKIES' non trovato. Potrebbe fallire il login.")
+    print("⚠️ ATTENZIONE: Secret 'YOUTUBE_COOKIES' non trovato. Probabile fallimento.")
 
-# Setup Client
 try:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     gemini_client = genai.Client(api_key=GOOGLE_API_KEY)
@@ -39,19 +36,17 @@ except Exception as e:
 
 YOUTUBE_CHANNELS = ["@InvestireBiz"]
 
-# --- SETUP COOKIES ---
-def setup_cookies_file():
-    """Scrive i cookie dal Secret a un file temporaneo"""
-    if not YOUTUBE_COOKIES:
-        return None
-    
-    cookie_path = "/tmp/youtube_cookies.txt"
-    with open(cookie_path, "w", encoding="utf-8") as f:
+# --- GESTIONE COOKIE ---
+def create_cookie_file():
+    """Crea il file cookie temporaneo dal Secret"""
+    if not YOUTUBE_COOKIES: return None
+    path = "/tmp/cookies.txt"
+    with open(path, "w", encoding="utf-8") as f:
         f.write(YOUTUBE_COOKIES)
-    print("   🍪 Cookie file creato in /tmp/youtube_cookies.txt")
-    return cookie_path
+    print("   🍪 File cookie creato in /tmp/cookies.txt")
+    return path
 
-# --- PULIZIA VTT ---
+# --- PULIZIA TESTO ---
 def clean_vtt_text(vtt_content: str) -> str:
     lines = vtt_content.splitlines()
     text_lines = []
@@ -67,12 +62,12 @@ def clean_vtt_text(vtt_content: str) -> str:
             seen.add(line)
     return " ".join(text_lines)
 
-# --- RECUPERO TESTO (yt-dlp + COOKIES + PROXY) ---
-def get_transcript_ytdlp(video_url: str, cookie_file: str) -> str:
-    print(f"   🔐 [YT-DLP] Scarico subs per {video_url} (Auth: Cookies)...")
+# --- SCARICAMENTO (yt-dlp + COOKIES + PROXY) ---
+def get_transcript_ytdlp(video_url: str, cookie_path: str) -> str:
+    print(f"   🔐 [YT-DLP] Scarico con autenticazione: {video_url}...")
     
     ydl_opts = {
-        'proxy': 'socks5://127.0.0.1:40000', # Proxy WARP
+        'proxy': 'socks5://127.0.0.1:40000', # Proxy WARP (manteniamolo per sicurezza)
         'skip_download': True,
         'writesubtitles': True,
         'writeautomaticsub': True,
@@ -80,14 +75,13 @@ def get_transcript_ytdlp(video_url: str, cookie_file: str) -> str:
         'outtmpl': '/tmp/%(id)s',
         'quiet': True,
         'no_warnings': True,
-        # 'sleep_interval': 5, # Opzionale: rallenta se serve
     }
 
-    # Se abbiamo i cookie, usiamoli
-    if cookie_file:
-        ydl_opts['cookiefile'] = cookie_file
+    # SE ABBIAMO I COOKIE, USIAMOLI!
+    if cookie_path:
+        ydl_opts['cookiefile'] = cookie_path
     else:
-        # Fallback estremo su client Android se mancano cookie
+        # Fallback disperato su Android se mancano i cookie
         ydl_opts['extractor_args'] = {'youtube': {'player_client': ['android']}}
 
     try:
@@ -99,7 +93,7 @@ def get_transcript_ytdlp(video_url: str, cookie_file: str) -> str:
 
         files = glob.glob("/tmp/*.vtt")
         if not files:
-            print("      ⚠️ Nessun file sottotitoli scaricato.")
+            print("      ⚠️ Nessun file sottotitoli trovato.")
             return ""
         
         target_file = files[0]
@@ -108,13 +102,21 @@ def get_transcript_ytdlp(video_url: str, cookie_file: str) -> str:
         
         print(f"      ✅ File scaricato: {os.path.basename(target_file)}")
         with open(target_file, 'r', encoding='utf-8') as f:
-            return clean_vtt_text(f.read())
+            content = f.read()
+            
+        clean_text = clean_vtt_text(content)
+        
+        if len(clean_text) > 50:
+            print(f"      ✅ Testo estratto: {len(clean_text)} chars.")
+            return clean_text
+        else:
+            return ""
 
     except Exception as e:
         print(f"      ❌ Errore yt-dlp: {e}")
         return ""
 
-# --- AI ---
+# --- ANALISI GEMINI ---
 def analyze_gemini(text: str) -> dict:
     if not text or len(text) < 50: return {"summary": "N/A"}
     print(f"   🧠 [AI] Invio {len(text)} chars...")
@@ -127,7 +129,9 @@ def analyze_gemini(text: str) -> dict:
             )
             return json.loads(res.text.replace("```json","").replace("```","").strip())
         except Exception as e:
-            if "429" in str(e): time.sleep(35)
+            if "429" in str(e): 
+                print("      ⚠️ Quota AI 429. Wait 35s...")
+                time.sleep(35)
             else: return {}
     return {}
 
@@ -169,10 +173,10 @@ def get_channel_videos(handle):
 
 # --- MAIN ---
 if __name__ == "__main__":
-    print("\n--- 🚀 START WORKER (COOKIES + PROXY) ---")
+    print("\n--- 🚀 START WORKER (COOKIES ENABLED) ---")
     
-    # Prepara il file cookie
-    cookie_path = setup_cookies_file()
+    # 1. Crea il file cookie
+    cookie_path = create_cookie_file()
     
     for handle in YOUTUBE_CHANNELS:
         videos = get_channel_videos(handle)
@@ -185,18 +189,18 @@ if __name__ == "__main__":
                     print("   ⏭️  Già presente."); continue
             except: pass
 
-            # 1. YT-DLP con Cookie
+            # 2. Scarica usando il file cookie
             text = get_transcript_ytdlp(v['url'], cookie_path)
             method = "yt-dlp+Cookies"
             
             if not text:
-                print("   ⚠️ Fallito. Fallback descrizione.")
+                print("   ⚠️ Fallback Descrizione.")
                 text = f"{v['title']}\n{v['desc']}"
                 method = "Descrizione"
             else:
-                print("   🔥 SUBS RECUPERATI!")
+                print("   🔥 SUBS TROVATI!")
 
-            # 2. Analisi & Save
+            # 3. Analisi e Save
             analysis = analyze_gemini(text)
             sid = get_source_id(v['ch_title'], v['ch_id'])
             
@@ -207,16 +211,16 @@ if __name__ == "__main__":
                         "published_at": v['date'], "content": text, "analysis": analysis,
                         "raw_metadata": {"vid": v['id'], "method": method}
                     }).execute()
-                    print(f"   💾 SALVATO ({method})")
+                    print(f"   💾 SALVATO")
                 except Exception as e:
                     if "duplicate" not in str(e): print(f"   ❌ DB: {e}")
             
-            print("   💤 10s...")
-            time.sleep(10)
-    
-    # Pulizia finale (sicurezza)
+            print("   💤 5s...")
+            time.sleep(5)
+            
+    # 4. Rimuovi il file cookie per sicurezza
     if cookie_path and os.path.exists(cookie_path):
         os.remove(cookie_path)
         print("   🧹 Cookie file rimosso.")
-            
+
     print("\n--- ✅ FINITO ---")
