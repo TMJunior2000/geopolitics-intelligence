@@ -9,7 +9,6 @@ from typing import List, Optional, Dict, Any, cast
 # --- LIBRERIE ---
 import yt_dlp
 import assemblyai as aai
-# Se hai problemi con l'import, assicurati che sia installato nel main.yml
 from youtube_transcript_api import YouTubeTranscriptApi
 from googleapiclient.discovery import build
 from google import genai
@@ -36,45 +35,14 @@ aai.settings.api_key = ASSEMBLYAI_KEY
 YOUTUBE_CHANNELS = ["@InvestireBiz"]
 
 # =========================
-# 1. STRATEGIA TESTO (PRIORITÀ 1 - Veloce e Sicura)
+# STRATEGIA 1: AUDIO DOWNLOAD (POTENZIATO CON CURL_CFFI)
 # =========================
 
-def get_transcript_text(video_id: str) -> str:
-    """Scarica i sottotitoli. Molto meno soggetto a blocchi rispetto a yt-dlp."""
-    try:
-        ytt_api = YouTubeTranscriptApi()
-        # Recupera la lista dei sottotitoli disponibili
-        transcript_list = ytt_api.list(video_id)
-        
-        try:
-            # Cerca Italiano o Inglese
-            transcript = transcript_list.find_transcript(['it', 'en'])
-        except:
-            # Se non c'è, prendi il primo (es. auto-generated) e traduci
-            first_transcript = next(iter(transcript_list))
-            transcript = first_transcript.translate('it')
-
-        transcript_data = transcript.fetch()
-        
-        # Unisce il testo
-        text_parts = []
-        for item in transcript_data:
-            if isinstance(item, dict):
-                text_parts.append(item.get('text', ''))
-            elif hasattr(item, 'text'):
-                text_parts.append(item.text)
-                
-        return " ".join(text_parts)
-    except Exception:
-        # Silenzioso: se fallisce, torneremo stringa vuota e proveremo altro
-        return ""
-
-# =========================
-# 2. STRATEGIA AUDIO (PRIORITÀ 2 - Fallback)
-# =========================
-
-def download_audio_force_ipv4(video_url: str) -> Optional[str]:
-    """Scarica audio solo se i sottotitoli falliscono."""
+def download_audio_impersonate(video_url: str) -> Optional[str]:
+    """
+    Scarica l'audio usando l'impersonificazione TLS (curl_cffi) come da documentazione.
+    Bypassa il blocco bot simulando un browser Chrome reale.
+    """
     temp_dir = "temp_audio"
     if not os.path.exists(temp_dir): os.makedirs(temp_dir)
     
@@ -86,20 +54,28 @@ def download_audio_force_ipv4(video_url: str) -> Optional[str]:
         'outtmpl': output_path,
         'quiet': True,
         'noplaylist': True,
-        'source_address': '0.0.0.0', # Forza IPv4
-        'force_ipv4': True,
+        
+        # --- OPZIONI ANTI-BLOCCO DALLA DOCS ---
+        # Richiede pip install "yt-dlp[default,curl-cffi]"
+        'impersonate': 'chrome', 
+        
+        # Forza l'uso di client Android (spesso non bloccati)
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'web_creator'],
+                'skip': ['hls', 'dash']
+            }
+        },
+        
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
             'preferredquality': '192',
         }],
-        # User Agent Mobile per tentare di aggirare il blocco "Sign in"
-        'user_agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36',
-        'ignoreerrors': True,
-        'no_warnings': True,
     }
 
     try:
+        print(f"   🎙️  Tentativo download con impersonate='chrome'...")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([video_url])
         
@@ -107,7 +83,8 @@ def download_audio_force_ipv4(video_url: str) -> Optional[str]:
         if os.path.exists(final_path) and os.path.getsize(final_path) > 1000:
             return final_path
         return None
-    except Exception:
+    except Exception as e:
+        print(f"   ❌ Errore yt-dlp impersonate: {e}")
         return None
 
 def transcribe_assemblyai(file_path: str) -> str:
@@ -115,15 +92,33 @@ def transcribe_assemblyai(file_path: str) -> str:
         transcriber = aai.Transcriber()
         config = aai.TranscriptionConfig(language_code="it")
         transcript = transcriber.transcribe(file_path, config=config)
-        
-        if transcript.status == aai.TranscriptStatus.error:
-            return ""
+        if transcript.status == aai.TranscriptStatus.error: return ""
         return transcript.text if transcript.text else ""
-    except:
-        return ""
+    except: return ""
 
 # =========================
-# 3. INTELLIGENZA & DB
+# STRATEGIA 2: SOTTOTITOLI (FALLBACK)
+# =========================
+
+def get_transcript_text(video_id: str) -> str:
+    try:
+        ytt_api = YouTubeTranscriptApi()
+        transcript_list = ytt_api.list(video_id)
+        try:
+            transcript = transcript_list.find_transcript(['it', 'en'])
+        except:
+            transcript = next(iter(transcript_list)).translate('it')
+        
+        data = transcript.fetch()
+        text_parts = []
+        for item in data:
+            if isinstance(item, dict): text_parts.append(item.get('text', ''))
+            elif hasattr(item, 'text'): text_parts.append(item.text)
+        return " ".join(text_parts)
+    except: return ""
+
+# =========================
+# UTILS & ANALISI
 # =========================
 
 def analyze_gemini(text: str) -> dict:
@@ -148,25 +143,14 @@ def analyze_gemini(text: str) -> dict:
         )
         if not response.text: return {"summary": "Errore AI vuota"}
         return json.loads(response.text.replace("```json", "").replace("```", "").strip())
-    except Exception as e:
-        return {"summary": f"Errore AI: {str(e)}"}
+    except Exception as e: return {"summary": str(e)}
 
 def get_source_id(name: str, ch_id: str) -> Optional[str]:
     try:
         res = supabase.table("sources").select("id").eq("name", name).execute()
-        if res.data and len(res.data) > 0:
-            first = cast(Dict[str, Any], res.data[0])
-            return str(first['id'])
-            
-        new = supabase.table("sources").insert({
-            "name": name, 
-            "type": "youtube", 
-            "base_url": f"https://youtube.com/channel/{ch_id}"
-        }).execute()
-        
-        if new.data and len(new.data) > 0:
-            first_new = cast(Dict[str, Any], new.data[0])
-            return str(first_new['id'])
+        if res.data: return str(cast(Dict[str, Any], res.data[0])['id'])
+        new = supabase.table("sources").insert({"name": name, "type": "youtube", "base_url": f"https://youtube.com/channel/{ch_id}"}).execute()
+        if new.data: return str(cast(Dict[str, Any], new.data[0])['id'])
         return None
     except: return None
 
@@ -181,12 +165,10 @@ def get_channel_videos(handle):
     try:
         ch_res = youtube_service.channels().list(part="id,contentDetails,snippet", forHandle=handle).execute()
         if not ch_res.get('items'): return []
-        
         item = ch_res['items'][0]
         uploads = item['contentDetails']['relatedPlaylists']['uploads']
         ch_title = item['snippet']['title']
         ch_id = item['id']
-        
         pl_res = youtube_service.playlistItems().list(part="snippet", playlistId=uploads, maxResults=10).execute()
         for item in pl_res.get('items', []):
             s = item['snippet']
@@ -202,7 +184,7 @@ def get_channel_videos(handle):
     return videos
 
 # =========================
-# LOOP PRINCIPALE (Logica Invertita)
+# MAIN LOOP
 # =========================
 
 def process_video(video):
@@ -210,34 +192,27 @@ def process_video(video):
     full_text = ""
     used_method = "N/A"
 
-    # [PRIORITÀ 1] SOTTOTITOLI (Bypassa il blocco bot di yt-dlp)
-    print("   📜 Tentativo 1: Transcript API...")
-    full_text = get_transcript_text(video['id'])
+    # PRIORITÀ 1: DOWNLOAD AUDIO con IMPERSONATE
+    mp3_path = download_audio_impersonate(video['url'])
+    if mp3_path:
+        print("   🎙️  Audio scaricato (Impersonate)! Trascrivo...")
+        full_text = transcribe_assemblyai(mp3_path)
+        if full_text: 
+            used_method = "Audio (AssemblyAI)"
+            os.remove(mp3_path)
     
-    if full_text:
-        used_method = "Transcript API"
-        print("   ✅ Testo recuperato dai sottotitoli.")
-
-    # [PRIORITÀ 2] AUDIO DOWNLOAD (Solo se sopra fallisce)
+    # PRIORITÀ 2: SOTTOTITOLI
     if not full_text:
-        print("   ⚠️ Sottotitoli assenti. Tentativo 2: Audio Download (yt-dlp)...")
-        mp3_path = download_audio_force_ipv4(video['url'])
-        if mp3_path:
-            print("   🎙️  Audio scaricato! Trascrivo...")
-            full_text = transcribe_assemblyai(mp3_path)
-            if full_text: 
-                used_method = "Audio (AssemblyAI)"
-                os.remove(mp3_path)
-        else:
-            print("   ❌ Audio bloccato da YouTube.")
+        print("   ⚠️ Audio fallito. Provo Sottotitoli...")
+        full_text = get_transcript_text(video['id'])
+        if full_text: used_method = "Transcript"
 
-    # [PRIORITÀ 3] DESCRIZIONE (Ultima spiaggia)
+    # PRIORITÀ 3: DESCRIZIONE
     if not full_text:
-        print("   ⚠️ Fallback finale: Uso la Descrizione.")
+        print("   ⚠️ Fallback finale: Uso Descrizione.")
         full_text = f"TITOLO: {video['title']}\nDESCRIZIONE: {video['description']}"
         used_method = "Descrizione"
 
-    # ANALISI E SALVATAGGIO
     print(f"   🧠 Analisi Gemini ({used_method})...")
     analysis = analyze_gemini(full_text)
 
@@ -254,8 +229,7 @@ def process_video(video):
                 "raw_metadata": {"video_id": video['id'], "method": used_method}
             }).execute()
             print("   💾 Salvato.")
-    except Exception as e:
-        print(f"   ❌ Errore DB: {e}")
+    except Exception as e: print(f"❌ DB Error: {e}")
 
     time.sleep(2)
 
