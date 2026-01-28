@@ -37,7 +37,7 @@ def get_transcript_apify(video_url: str) -> str:
     actor_id = "pintostudio/youtube-transcript-scraper"
     
     run_input = {
-        "videoUrls": [video_url],
+        "videoUrl": video_url,
     }
 
     try:
