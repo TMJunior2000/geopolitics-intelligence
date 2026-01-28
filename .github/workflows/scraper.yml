@@ -2,8 +2,8 @@ name: Geopolitics Scraper
 
 on:
   schedule:
-    - cron: '0 * * * *'   # ogni ora
-  workflow_dispatch:
+    - cron: '0 * * * *'   # Esegue ogni ora
+  workflow_dispatch:      # Permette avvio manuale con pulsante
     inputs:
       mode:
         description: "Execution mode (LIVE or BACKFILL)"
@@ -23,18 +23,21 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Deno (yt-dlp JS runtime)
-        uses: denoland/setup-deno@v1
-        with:
-          deno-version: v1.x
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
 
+      # Installiamo le dipendenze direttamente qui per sicurezza
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
+          pip install --upgrade pip
+          pip install -U yt-dlp assemblyai google-api-python-client google-genai supabase pandas
 
       - name: Run worker
         env:
-          MODE: ${{ github.event.inputs.mode || 'LIVE' }}
+          # Logica: Se avviato manualmente usa l'input, altrimenti (cron) usa 'LIVE'
+          MODE: ${{ inputs.mode || 'LIVE' }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           ASSEMBLYAI_KEY: ${{ secrets.ASSEMBLYAI_KEY }}
