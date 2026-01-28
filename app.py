@@ -1,176 +1,83 @@
-import os
-import json
-import datetime as dt
-from typing import Dict, Any, cast
-from typing import List
 import streamlit as st
 import pandas as pd
-from supabase import create_client, Client
-from datetime import datetime
+from services.db_service import DBService
 
-# =========================
-# CONFIG
-# =========================
-st.set_page_config(
-    page_title="Geopolitical Intelligence",
-    layout="wide",
-    page_icon="🌍"
-)
+# Setup
+st.set_page_config(page_title="Trading Intelligence DSS", layout="wide")
+db = DBService()
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+st.title("📊 Trading Intelligence Dashboard")
+st.markdown("### Macro Insights + Technical Signals Confluence")
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    st.error("Variabili d'ambiente SUPABASE mancanti")
-    st.stop()
+# 1. Recupero Dati
+insights_data, signals_data = db.get_dashboard_data()
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+# Convertiamo in DataFrame per facilità
+if insights_data:
+    df_insights = pd.DataFrame(insights_data)
+    # Appiattiamo il JSON annidato di intelligence_feed
+    df_insights['source'] = df_insights['intelligence_feed'].apply(lambda x: x['title'] if x else 'N/A')
+    df_insights['date'] = df_insights['intelligence_feed'].apply(lambda x: x['published_at'] if x else 'N/A')
+else:
+    df_insights = pd.DataFrame()
 
-# =========================
-# SIDEBAR
-# =========================
-st.sidebar.title("🌐 Intelligence Filters")
+if signals_data:
+    df_signals = pd.DataFrame(signals_data)
+else:
+    df_signals = pd.DataFrame()
 
-mode = st.sidebar.radio(
-    "Modalità",
-    ["LIVE (ultime 24h)", "STORICO"]
-)
+# 2. Sidebar: Filtri
+st.sidebar.header("Filters")
+selected_asset = st.sidebar.text_input("Search Ticker (es. XAUUSD)", "").upper()
 
-keyword = st.sidebar.text_input("🔍 Cerca keyword", "")
+# 3. Main View: Confluence Board
+col1, col2 = st.columns(2)
 
-date_from = None
-date_to = None
+with col1:
+    st.subheader("📡 Macro Sentiment (Ultimi Video)")
+    if not df_insights.empty:
+        # Filtro
+        view_df = df_insights
+        if selected_asset:
+            view_df = df_insights[df_insights['asset_ticker'].str.contains(selected_asset, na=False)]
+        
+        for _, row in view_df.iterrows():
+            sentiment_color = "🟢" if row['sentiment'] == "BULLISH" else "🔴" if row['sentiment'] == "BEARISH" else "⚪"
+            with st.expander(f"{sentiment_color} {row['asset_ticker']} | {row['timeframe']}"):
+                st.write(f"**Reasoning:** {row['ai_reasoning']}")
+                st.write(f"**Levels:** {row['key_levels']}")
+                st.caption(f"Source: {row['source']} ({row['date']})")
+    else:
+        st.info("Nessun insight recente.")
 
-if mode == "STORICO":
-    date_from = st.sidebar.date_input(
-        "Da",
-        value=dt.date(2026, 1, 1)
-    )
-    date_to = st.sidebar.date_input(
-        "A",
-        value=dt.date(2026, 1, 25)
-    )
+with col2:
+    st.subheader("📈 Technical Signals (FVG / Price Action)")
+    if not df_signals.empty:
+        view_sig = df_signals
+        if selected_asset:
+            view_sig = df_signals[df_signals['asset_ticker'].str.contains(selected_asset, na=False)]
+            
+        for _, row in view_sig.iterrows():
+            st.warning(f"🔔 {row['asset_ticker']} - {row['pattern']} ({row['direction']})")
+            st.write(f"Status: **{row['status']}**")
+            st.write(f"Notes: {row['notes']}")
+    else:
+        st.info("Nessun segnale tecnico attivo. Inseriscine uno nel DB.")
 
-# =========================
-# DATA LOADING
-# =========================
-@st.cache_data(ttl=300)
-def load_sources() -> dict[str, str]:
-    res = supabase.table("sources").select("id,name").execute()
-
-    raw = res.data or []
-
-    data = cast(List[Dict[str, Any]], raw)
-
-    return {str(s["id"]): str(s["name"]) for s in data}
-
-@st.cache_data(ttl=300)
-def load_feed():
-    res = (
-        supabase
-        .table("intelligence_feed")
-        .select("*")
-        .order("published_at", desc=True)
-        .execute()
-    )
-    return res.data
-
-
-sources = load_sources()
-feed = load_feed()
-
-# =========================
-# FILTERING
-# =========================
-df = pd.DataFrame(feed)
-
-if df.empty:
-    st.warning("Nessun dato disponibile.")
-    st.stop()
-
-df["published_at"] = pd.to_datetime(
-    df["published_at"],
-    errors="coerce",
-    utc=True
-)
-
-df["content"] = df["content"].fillna("")
-
-now_utc = dt.datetime.now(dt.timezone.utc)
-
-if mode == "LIVE (ultime 24h)":
-    cutoff = now_utc - dt.timedelta(hours=24)
-    df = df[df["published_at"] >= cutoff]
-
-if date_from is not None and date_to is not None:
-    start = pd.Timestamp(date_from, tz="UTC")
-    end = pd.Timestamp(date_to, tz="UTC") + pd.Timedelta(days=1)
-
-    df = df[
-        (df["published_at"] >= start) &
-        (df["published_at"] < end)
-    ]
-
-if keyword:
-    df = df[
-        df["title"].str.contains(keyword, case=False, na=False) |
-        df["content"].str.contains(keyword, case=False, na=False)
-    ]
-
-df = df.sort_values("published_at", ascending=False)
-
-# =========================
-# UI
-# =========================
-st.title("🌍 Geopolitical Intelligence Feed")
-
-st.caption(
-    f"Fonti monitorate: {', '.join(sorted(set(sources.values())))}"
-)
-
-st.markdown("---")
-
-for _, row in df.iterrows():
-    source_name = sources.get(row["source_id"], "Unknown")
-
-    with st.container():
-        col1, col2 = st.columns([4, 1])
-
-        with col1:
-            st.subheader(row["title"])
-            st.caption(
-                f"🗞️ {source_name} | 🕒 {row['published_at'].strftime('%Y-%m-%d %H:%M UTC')}"
-            )
-
-        with col2:
-            if row["url"].startswith("http"):
-                st.link_button("Apri Fonte", row["url"])
-
-        with st.expander("📄 Contenuto / Trascrizione"):
-            st.write(row["content"][:5000])
-
-        if row["analysis"]:
-            with st.expander("🧠 Analisi Geopolitica (AI)"):
-                try:
-                    analysis = row["analysis"]
-
-                    if isinstance(analysis, str):
-                        analysis = json.loads(analysis)
-
-                    st.markdown("**📝 Summary**")
-                    st.write(analysis.get("summary", "N/A"))
-
-                    st.markdown("**🌍 Paesi Coinvolti**")
-                    st.write(", ".join(analysis.get("countries_involved", [])) or "N/A")
-
-                    st.markdown("**⚠️ Livello di Rischio**")
-                    st.write(analysis.get("risk_level", "N/A"))
-
-                    st.markdown("**🏷️ Keywords**")
-                    st.write(", ".join(analysis.get("keywords", [])) or "N/A")
-
-                except Exception as e:
-                    st.error("Errore parsing analisi AI")
-                    st.json(row["analysis"])
-
-        st.markdown("---")
+# 4. Sezione Inserimento Manuale Segnali (Per te)
+st.sidebar.markdown("---")
+st.sidebar.subheader("📝 Add Manual Signal")
+with st.sidebar.form("add_signal"):
+    new_ticker = st.text_input("Ticker").upper()
+    new_pattern = st.selectbox("Pattern", ["FVG_H4", "BREAKOUT", "RETEST"])
+    new_dir = st.selectbox("Direction", ["LONG", "SHORT"])
+    submit = st.form_submit_button("Save Signal")
+    
+    if submit and new_ticker:
+        db.client.table("technical_signals").insert({
+            "asset_ticker": new_ticker,
+            "pattern": new_pattern,
+            "direction": new_dir,
+            "status": "PENDING"
+        }).execute()
+        st.sidebar.success("Segnale salvato!")

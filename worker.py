@@ -1,184 +1,79 @@
-import os
-import json
 import time
-from typing import cast, List, Dict, Any, Optional
-
-from apify_client import ApifyClient
+from datetime import datetime
 from googleapiclient.discovery import build
-from google import genai
-from google.genai import types
-from supabase import create_client, Client
+from config import Config
+from services.apify_service import ApifyService
+from services.ai_service import AIService
+from services.db_service import DBService
 
-# --- CONFIGURAZIONE ---
-print("\n🔧 [INIT] Avvio script (APIFY TRANSCRIPT MODE)...")
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-APIFY_TOKEN = os.getenv("APIFY_TOKEN")
+# Setup Servizi
+apify_svc = ApifyService()
+ai_svc = AIService()
+db_svc = DBService()
+yt_service = build('youtube', 'v3', developerKey=Config.GOOGLE_API_KEY)
 
-try:
-    supabase: Client = create_client(cast(str, SUPABASE_URL), cast(str, SUPABASE_KEY))
-    gemini_client = genai.Client(api_key=GOOGLE_API_KEY)
-    youtube_service = build('youtube', 'v3', developerKey=GOOGLE_API_KEY)
-    apify_client = ApifyClient(APIFY_TOKEN)
-    print("✅ Client inizializzati.")
-except Exception as e:
-    print(f"❌ ERRORE INIT: {e}")
-    exit(1)
-
-YOUTUBE_CHANNELS = ["@InvestireBiz"]
-
-# --- ESTRAZIONE TRASCRIZIONE ---
-def get_transcript_apify(video_url: str) -> str:
-    """Estrae il testo scavando nella chiave 'data' specifica di pintostudio"""
-    print(f"   ☁️ [APIFY] Estrazione testo: {video_url}...")
-    
-    actor_id = "pintostudio/youtube-transcript-scraper"
-    run_input = {"videoUrl": video_url}
-
-    try:
-        run = apify_client.actor(actor_id).call(run_input=run_input)
-        if not run: return ""
-        
-        full_text = ""
-        items = list(apify_client.dataset(run["defaultDatasetId"]).iterate_items())
-        
-        for item in items:
-            if isinstance(item, dict):
-                # 1. Recuperiamo il contenuto di 'data'
-                data_content = item.get("data")
-                
-                # Caso A: 'data' è una LISTA di segmenti (molto probabile)
-                if isinstance(data_content, list):
-                    for segment in data_content:
-                        if isinstance(segment, dict):
-                            # Cerchiamo la chiave 'text' dentro ogni segmento
-                            part = segment.get("text") or segment.get("caption")
-                            if part:
-                                full_text += str(part) + " "
-                
-                # Caso B: 'data' è direttamente una STRINGA
-                elif isinstance(data_content, str):
-                    full_text += data_content + " "
-                
-                # Caso C: Fallback se non c'è 'data' o ha un altro formato
-                else:
-                    text_part = item.get("text") or item.get("transcript")
-                    if text_part:
-                        full_text += str(text_part) + " "
-        
-        clean_text = full_text.strip()
-        
-        if clean_text:
-            print(f"      ✅ Testo estratto con successo ({len(clean_text)} caratteri)")
-            return clean_text
-        else:
-            print(f"      ⚠️ Nessun testo trovato nei campi conosciuti.")
-            return ""
-
-    except Exception as e:
-        print(f"      ❌ Errore Apify: {e}")
-        return ""
-
-# --- ANALISI GEMINI ---
-def analyze_gemini(text: str) -> dict:
-    if not text or len(text) < 50: return {"summary": "N/A"}
-    print(f"   🧠 [AI] Analisi con Gemini...")
-    try:
-        res = gemini_client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=f'Analizza il testo e restituisci JSON: {{ "summary": "...", "risk_level": "LOW", "countries_involved": [], "key_takeaway": "..." }}\nTESTO:{text[:28000]}',
-            config=types.GenerateContentConfig(response_mime_type="application/json")
-        )
-        return cast(dict, json.loads(res.text.strip() if res.text else "{}"))
-    except:
-        return {}
-
-# --- GESTIONE DB ---
-def get_source_id(name: str, ch_id: str) -> Optional[str]:
-    try:
-        res = supabase.table("sources").select("id").eq("name", name).execute()
-        data = cast(List[Dict[str, Any]], res.data)
-        if data: return str(data[0].get('id'))
-        
-        new = supabase.table("sources").insert({"name": name, "type": "youtube", "base_url": ch_id}).execute()
-        new_data = cast(List[Dict[str, Any]], new.data)
-        if new_data: return str(new_data[0].get('id'))
-    except: return None
-    return None
-
-def get_channel_videos(handle: str) -> List[Dict[str, Any]]:
+def get_recent_videos(handle: str, max_results: int = 3):
+    """Ottiene video recenti usando API YouTube ufficiali."""
     videos = []
     try:
-        res = youtube_service.channels().list(part="contentDetails,snippet", forHandle=handle).execute()
-        items = res.get('items', [])
-        if not items: return []
+        res = yt_service.channels().list(part="contentDetails,snippet", forHandle=handle).execute()
+        if not res.get('items'): return []
         
-        ch_title = items[0]['snippet']['title']
-        ch_id = items[0]['id']
-        upl_id = items[0]['contentDetails']['relatedPlaylists']['uploads']
+        upl_id = res['items'][0]['contentDetails']['relatedPlaylists']['uploads']
+        ch_title = res['items'][0]['snippet']['title']
         
-        pl = youtube_service.playlistItems().list(part="snippet", playlistId=upl_id, maxResults=3).execute()
+        pl = yt_service.playlistItems().list(part="snippet", playlistId=upl_id, maxResults=max_results).execute()
         for i in pl.get('items', []):
-            snippet = i.get('snippet', {})
-            v_id = snippet.get('resourceId', {}).get('videoId')
+            snippet = i['snippet']
+            v_id = snippet['resourceId']['videoId']
             videos.append({
                 "id": v_id,
-                "title": snippet.get('title'),
-                "desc": snippet.get('description'),
-                "date": snippet.get('publishedAt'),
+                "title": snippet['title'],
+                "date": snippet['publishedAt'],
                 "url": f"https://www.youtube.com/watch?v={v_id}",
-                "ch_title": ch_title, "ch_id": ch_id
+                "ch_title": ch_title
             })
-    except: pass
+    except Exception as e:
+        print(f"❌ Errore YouTube API: {e}")
     return videos
 
-# --- MAIN ---
-if __name__ == "__main__":
-    print("\n--- 🚀 START WORKER ---")
+def run_pipeline(backfill_mode=False):
+    print(f"\n🚀 AVVIO WORKER | Mode: {'BACKFILL' if backfill_mode else 'LIVE'}")
+    limit = 50 if backfill_mode else 3
     
-    for handle in YOUTUBE_CHANNELS:
-        videos = get_channel_videos(handle)
+    for handle in Config.YOUTUBE_HANDLES:
+        print(f"\n🔍 Canale: {handle}")
+        videos = get_recent_videos(handle, max_results=limit)
         
         for v in videos:
             print(f"\n🔄 Video: {v['title'][:50]}...")
             
-            # Controllo duplicati
-            try:
-                check = supabase.table("intelligence_feed").select("id").eq("url", v['url']).execute()
-                if check.data:
-                    print("   ⏭️  Già presente."); continue
-            except: pass
-
-            # 1. Scraping Trascrizione con Apify
-            text = get_transcript_apify(v['url'])
-            method = "Apify-Transcript"
-            
+            # 1. Check Esistenza
+            if db_svc.video_exists(v['url']):
+                print("   ⏭️  Skipped (Già presente)")
+                continue
+                
+            # 2. Scraping
+            text = apify_svc.get_transcript(v['url'])
             if not text:
-                print("   ⚠️ Sottotitoli non trovati. Uso la descrizione.")
-                text = f"{v['title']}\n{v['desc']}"
-                method = "YouTube-Description"
-
-            # 2. Analisi AI
-            analysis = analyze_gemini(text)
+                print("   ⚠️ No transcript. Skip analysis.")
+                continue
             
-            # 3. Salvataggio
-            sid = get_source_id(str(v['ch_title']), str(v['ch_id']))
-            if sid:
-                try:
-                    supabase.table("intelligence_feed").insert({
-                        "source_id": sid,
-                        "title": v['title'],
-                        "url": v['url'],
-                        "published_at": v['date'],
-                        "content": text,
-                        "analysis": analysis,
-                        "raw_metadata": {"vid": v['id'], "method": method}
-                    }).execute()
-                    print(f"   💾 SALVATO")
-                except Exception as e:
-                    print(f"   ❌ Errore DB: {e}")
+            # Arricchiamo l'oggetto video con il testo
+            v['content'] = text
             
+            # 3. AI Analysis
+            analysis = ai_svc.analyze_video(text)
+            if not analysis:
+                print("   ⚠️ AI Analysis failed.")
+                continue
+                
+            # 4. Save to DB
+            db_svc.save_analysis(v, analysis)
+            
+            # Rate limiting gentile
             time.sleep(2)
 
-    print("\n--- ✅ FINITO ---")
+if __name__ == "__main__":
+    # Puoi passare argomenti da riga di comando per attivare il backfill
+    run_pipeline(backfill_mode=False)
