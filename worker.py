@@ -5,8 +5,16 @@ import requests
 import traceback
 from datetime import datetime
 
-# Importiamo la libreria ufficiale
+# Importiamo la classe API e la classe di configurazione Proxy
 from youtube_transcript_api import YouTubeTranscriptApi
+try:
+    # GenericProxyConfig si trova solitamente qui nella libreria installata
+    from youtube_transcript_api.proxies import GenericProxyConfig
+except ImportError:
+    # Fallback se la struttura è diversa, ma con pip install standard è lì
+    print("⚠️ Attenzione: impossibile importare GenericProxyConfig da proxies.")
+    from youtube_transcript_api import GenericProxyConfig
+
 from googleapiclient.discovery import build
 from google import genai
 from google.genai import types
@@ -28,19 +36,24 @@ YOUTUBE_CHANNELS = ["@InvestireBiz"]
 
 # --- FUNZIONE RECUPERO TESTO ---
 def get_transcript(video_id: str) -> str:
-    print(f"   🕵️  Scarico sottotitoli per {video_id} (via Proxy SOCKS5)...")
-    
-    # Configuriamo il dizionario proxy per la libreria
-    # SOCKS5h significa che anche la risoluzione DNS avviene tramite proxy (più sicuro e anonimo)
-    PROXIES = {
-        "https": "socks5h://127.0.0.1:40000",
-        "http": "socks5h://127.0.0.1:40000"
-    }
-
+    print(f"   🕵️  Scarico sottotitoli per {video_id} (Proxy SOCKS5h)...")
     try:
-        # Metodo Standard: passiamo 'proxies' direttamente alla funzione statica
-        # Non serve istanziare classi o oggetti complessi.
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id, proxies=PROXIES)
+        # 1. CONFIGURAZIONE PROXY
+        # Usiamo GenericProxyConfig come definito nel codice che hai condiviso.
+        # 'socks5h' delega la risoluzione DNS al proxy (fondamentale per WARP)
+        proxy_url = "socks5h://127.0.0.1:40000"
+        
+        proxy_conf = GenericProxyConfig(
+            http_url=proxy_url,
+            https_url=proxy_url
+        )
+
+        # 2. ISTANZIA LA CLASSE
+        # Passiamo l'oggetto config al costruttore
+        ytt_api = YouTubeTranscriptApi(proxy_config=proxy_conf)
+        
+        # 3. CHIAMA IL METODO D'ISTANZA .list()
+        transcript_list = ytt_api.list(video_id)
         
         transcript = None
         try:
@@ -58,8 +71,14 @@ def get_transcript(video_id: str) -> str:
             data = transcript.fetch()
             
             # Parsing pulito
-            full_text = " ".join([i['text'] for i in data if 'text' in i])
+            parts = []
+            for i in data:
+                if isinstance(i, dict):
+                    parts.append(i.get('text', ''))
+                elif hasattr(i, 'text'):
+                    parts.append(i.text)
             
+            full_text = " ".join(parts)
             if full_text:
                 print("   ✅ Successo!")
                 return full_text
@@ -125,7 +144,7 @@ def get_channel_videos(handle):
 
 # --- MAIN ---
 if __name__ == "__main__":
-    print("--- 🚀 START WORKER (MANUAL PROXY MODE) ---")
+    print("--- 🚀 START WORKER (GENERIC PROXY CONFIG + INSTANCE) ---")
     for handle in YOUTUBE_CHANNELS:
         for v in get_channel_videos(handle):
             if url_exists(v['url']): continue
