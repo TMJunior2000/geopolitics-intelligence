@@ -2,12 +2,10 @@ name: Geopolitics Scraper
 
 on:
   schedule:
-    - cron: '0 * * * *'   # Esegue ogni ora
-  workflow_dispatch:      # Permette avvio manuale
+    - cron: '0 * * * *'
+  workflow_dispatch:
     inputs:
       mode:
-        description: "Execution mode (LIVE or BACKFILL)"
-        required: true
         default: "BACKFILL"
 
 jobs:
@@ -34,12 +32,19 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          # Rimuovi versioni vecchie
+          
+          # 1. Installa yt-dlp versione Master (Anti-Blocco)
           pip uninstall -y yt-dlp 
-          # Installa yt-dlp versione MASTER (Anti-Blocco)
           pip install git+https://github.com/yt-dlp/yt-dlp.git@master 
-          # Installa TUTTE le altre librerie (AGGIUNTO youtube-transcript-api)
-          pip install assemblyai google-api-python-client google-genai supabase pandas youtube-transcript-api
+          
+          # 2. Installa la libreria mancante (SOTTOTITOLI) - MESSA QUI DA SOLA
+          pip install youtube-transcript-api
+          
+          # 3. Installa le altre librerie
+          pip install assemblyai google-api-python-client google-genai supabase pandas
+
+      - name: Debug Packages
+        run: pip list | grep youtube
 
       - name: Run worker
         env:
@@ -48,5 +53,4 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           ASSEMBLYAI_KEY: ${{ secrets.ASSEMBLYAI_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-        run: |
-          python worker.py
+        run: python worker.py
