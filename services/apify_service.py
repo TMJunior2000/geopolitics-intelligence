@@ -39,11 +39,11 @@ class ApifyService:
 
         # CONFIGURAZIONE CORRETTA PER ACTOR BASATI SU VIDEO_IDS
         run_input = {
-            "video_ids": [video_id],  # <--- Ecco la correzione: Array di ID
-            "languages": ["it"],      # Specifica la lingua
-            "preferredLanguage": "it",
-            "includeGenerated": True, # Accetta i sottotitoli automatici
-            "format": "json"          # O "text" a seconda dell'actor
+            "video_ids": [video_id],
+            "languages": ["it"],
+            "generated": True,     # <--- CAMBIATO: da addGenerated a generated
+            "translation": False,   # <--- AGGIUNTO per coerenza col log
+            "subtitlesFormat": "text" 
         }
 
         try:
