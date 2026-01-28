@@ -15,48 +15,35 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Scarica il codice
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # 2. Prepara Python
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # 3. FIX CRITICO: Installa Node.js
-      # Serve a yt-dlp per risolvere la sfida "n" di YouTube ed evitare errori 403
-      - name: Setup Node.js (JavaScript Engine)
+      - name: Setup Node.js (yt-dlp engine)
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      # 4. FIX CRITICO: Installa FFmpeg
-      # Serve per convertire il download in MP3 per AssemblyAI
       - name: Install FFmpeg
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
-      # 5. FIX CRITICO: Installa Dipendenze (Versione Nightly di yt-dlp)
-      # Installiamo yt-dlp direttamente da GitHub per avere le patch di oggi
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          # Disinstalla eventuali versioni vecchie
+          # Rimuovi versioni vecchie
           pip uninstall -y yt-dlp 
-          # Installa la versione MASTER (contiene i fix per i blocchi di YouTube attuali)
+          # Installa yt-dlp versione MASTER (Anti-Blocco)
           pip install git+https://github.com/yt-dlp/yt-dlp.git@master 
-          # Installa le altre librerie
-          pip install assemblyai google-api-python-client google-genai supabase pandas
+          # Installa TUTTE le altre librerie (AGGIUNTO youtube-transcript-api)
+          pip install assemblyai google-api-python-client google-genai supabase pandas youtube-transcript-api
 
-      # 6. Esegui lo Script
       - name: Run worker
         env:
-          # Variabili di configurazione
           MODE: ${{ inputs.mode || 'LIVE' }}
-          # Database e API Keys
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           ASSEMBLYAI_KEY: ${{ secrets.ASSEMBLYAI_KEY }}
