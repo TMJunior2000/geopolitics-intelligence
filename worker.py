@@ -30,37 +30,56 @@ YOUTUBE_CHANNELS = ["@InvestireBiz"]
 
 # --- ESTRAZIONE TRASCRIZIONE ---
 def get_transcript_apify(video_url: str) -> str:
-    """Estrae il testo del video usando microworlds/youtube-transcript-scraper"""
+    """Estrae il testo usando pintostudio/youtube-transcript-scraper"""
     print(f"   ☁️ [APIFY] Estrazione testo: {video_url}...")
     
-    # Questo actor è specifico per i sottotitoli, veloce ed economico
+    # L'actor che hai confermato funzionare
     actor_id = "pintostudio/youtube-transcript-scraper"
+    
     run_input = {
-        "videoUrl": video_url,
+        "videoUrls": [video_url],
     }
 
     try:
         # Avvia l'actor
         run = apify_client.actor(actor_id).call(run_input=run_input)
-        if not run: return ""
+        if not run: 
+            return ""
         
         full_text = ""
         # Recupera i risultati dal dataset
-        for item in apify_client.dataset(run["defaultDatasetId"]).iterate_items():
+        items = list(apify_client.dataset(run["defaultDatasetId"]).iterate_items())
+        
+        for item in items:
             if isinstance(item, dict):
-                # Questo actor restituisce il testo nel campo 'transcript' o 'text'
-                text_part = item.get("transcript") or item.get("text")
+                # Cerchiamo il testo in tutte le chiavi possibili usate dagli scraper
+                # 1. 'text' è la più comune per i singoli segmenti
+                # 2. 'caption' o 'transcript' per il testo completo
+                # 3. 'body' o 'content' come fallback
+                text_part = (
+                    item.get("text") or 
+                    item.get("caption") or 
+                    item.get("transcript") or 
+                    item.get("fullTranscript")
+                )
+                
                 if text_part:
                     full_text += str(text_part) + " "
         
         clean_text = full_text.strip()
+        
         if clean_text:
-            print(f"      ✅ Testo estratto ({len(clean_text)} caratteri)")
+            # Rimuoviamo eventuali timestamp se presenti (es. [00:00]) 
+            # ma solitamente questi actor danno già testo pulito
+            print(f"      ✅ Testo estratto con successo ({len(clean_text)} caratteri)")
             return clean_text
-        return ""
+        else:
+            # Se arriviamo qui, l'actor ha girato ma non abbiamo trovato le chiavi giuste
+            print(f"      ⚠️ Dataset trovato ma chiavi sconosciute. Chiavi presenti: {items[0].keys() if items else 'Nessuna'}")
+            return ""
 
     except Exception as e:
-        print(f"      ❌ Errore Apify: {e}")
+        print(f"      ❌ Errore durante la chiamata Apify: {e}")
         return ""
 
 # --- ANALISI GEMINI ---
