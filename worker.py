@@ -30,56 +30,54 @@ YOUTUBE_CHANNELS = ["@InvestireBiz"]
 
 # --- ESTRAZIONE TRASCRIZIONE ---
 def get_transcript_apify(video_url: str) -> str:
-    """Estrae il testo usando pintostudio/youtube-transcript-scraper"""
+    """Estrae il testo scavando nella chiave 'data' specifica di pintostudio"""
     print(f"   ☁️ [APIFY] Estrazione testo: {video_url}...")
     
-    # L'actor che hai confermato funzionare
     actor_id = "pintostudio/youtube-transcript-scraper"
-    
-    run_input = {
-        "videoUrl": video_url,
-    }
+    run_input = {"videoUrl": video_url}
 
     try:
-        # Avvia l'actor
         run = apify_client.actor(actor_id).call(run_input=run_input)
-        if not run: 
-            return ""
+        if not run: return ""
         
         full_text = ""
-        # Recupera i risultati dal dataset
         items = list(apify_client.dataset(run["defaultDatasetId"]).iterate_items())
         
         for item in items:
             if isinstance(item, dict):
-                # Cerchiamo il testo in tutte le chiavi possibili usate dagli scraper
-                # 1. 'text' è la più comune per i singoli segmenti
-                # 2. 'caption' o 'transcript' per il testo completo
-                # 3. 'body' o 'content' come fallback
-                text_part = (
-                    item.get("text") or 
-                    item.get("caption") or 
-                    item.get("transcript") or 
-                    item.get("fullTranscript")
-                )
+                # 1. Recuperiamo il contenuto di 'data'
+                data_content = item.get("data")
                 
-                if text_part:
-                    full_text += str(text_part) + " "
+                # Caso A: 'data' è una LISTA di segmenti (molto probabile)
+                if isinstance(data_content, list):
+                    for segment in data_content:
+                        if isinstance(segment, dict):
+                            # Cerchiamo la chiave 'text' dentro ogni segmento
+                            part = segment.get("text") or segment.get("caption")
+                            if part:
+                                full_text += str(part) + " "
+                
+                # Caso B: 'data' è direttamente una STRINGA
+                elif isinstance(data_content, str):
+                    full_text += data_content + " "
+                
+                # Caso C: Fallback se non c'è 'data' o ha un altro formato
+                else:
+                    text_part = item.get("text") or item.get("transcript")
+                    if text_part:
+                        full_text += str(text_part) + " "
         
         clean_text = full_text.strip()
         
         if clean_text:
-            # Rimuoviamo eventuali timestamp se presenti (es. [00:00]) 
-            # ma solitamente questi actor danno già testo pulito
             print(f"      ✅ Testo estratto con successo ({len(clean_text)} caratteri)")
             return clean_text
         else:
-            # Se arriviamo qui, l'actor ha girato ma non abbiamo trovato le chiavi giuste
-            print(f"      ⚠️ Dataset trovato ma chiavi sconosciute. Chiavi presenti: {items[0].keys() if items else 'Nessuna'}")
+            print(f"      ⚠️ Nessun testo trovato nei campi conosciuti.")
             return ""
 
     except Exception as e:
-        print(f"      ❌ Errore durante la chiamata Apify: {e}")
+        print(f"      ❌ Errore Apify: {e}")
         return ""
 
 # --- ANALISI GEMINI ---
