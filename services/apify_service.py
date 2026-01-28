@@ -11,7 +11,7 @@ class ApifyService:
         print(f"   ☁️ [APIFY] Richiesta per: {video_url}")
 
         run_input = {
-            "video_ids": {"url": video_url},
+            "video_ids": {"url": [video_url]},
             "subtitlesLanguage": "it", 
             "addGenerated": True,      # <--- QUESTA È LA CHIAVE CORRETTA
             "subtitlesFormat": "text", # <--- Otteniamo testo pulito invece di JSON a pezzi
