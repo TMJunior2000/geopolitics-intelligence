@@ -1,292 +1,321 @@
 import os
 import json
-import re
-import html
 import time
+import uuid
+import shutil
 import datetime as dt
 from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict
 
-# --- LIBRERIE GOOGLE UFFICIALI ---
+# --- LIBRERIE ESTERNE ---
+import yt_dlp
+import assemblyai as aai
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from google import genai
 from google.genai import types
-
-# --- LIBRERIA SOTTOTITOLI "UNOFFICIAL" ---
-from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
-
-# --- DATABASE ---
 from supabase import create_client, Client
 
 # =========================
-# CONFIGURAZIONE
+# 1. CONFIGURAZIONE & SETUP
 # =========================
-MODE = os.getenv("MODE", "LIVE").upper()
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
-# Lista canali (Handle o ID)
+# Caricamento Variabili Ambiente
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+ASSEMBLYAI_KEY = os.getenv("ASSEMBLYAI_KEY")
+
+# Verifica critica iniziale
+if not all([SUPABASE_URL, SUPABASE_KEY, GOOGLE_API_KEY, ASSEMBLYAI_KEY]):
+    raise ValueError("❌ ERRORE: Mancano una o più variabili d'ambiente nel file .env (SUPABASE_URL, SUPABASE_KEY, GOOGLE_API_KEY, ASSEMBLYAI_KEY)")
+
+# Configurazione Modalità
+MODE = os.getenv("MODE", "LIVE").upper()
+# Date per Backfill (modificare se necessario)
+BACKFILL_START = dt.date(2026, 1, 1)
+BACKFILL_END = dt.date(2026, 1, 31)
+
+# Lista Canali
 YOUTUBE_CHANNELS = [
     "@InvestireBiz",
-    # Aggiungi qui altri canali es: "@BreakingItaly", "@NovaLectio"
+    # Aggiungi qui altri canali es: "@NovaLectio"
 ]
 
-# Date per la modalità BACKFILL
-BACKFILL_START = dt.date(2026, 1, 1)
-BACKFILL_END = dt.date(2026, 1, 30)
-
-# =========================
-# INIZIALIZZAZIONE CLIENT
-# =========================
-if not GOOGLE_API_KEY or not SUPABASE_URL or not SUPABASE_KEY:
-    raise ValueError("❌ Variabili d'ambiente mancanti! Controlla .env")
-
+# Inizializzazione Clienti
 try:
+    aai.settings.api_key = ASSEMBLYAI_KEY
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     gemini_client = genai.Client(api_key=GOOGLE_API_KEY)
     youtube_service = build('youtube', 'v3', developerKey=GOOGLE_API_KEY)
 except Exception as e:
-    raise RuntimeError(f"Errore inizializzazione servizi: {e}")
+    raise RuntimeError(f"❌ Errore critico inizializzazione client: {e}")
 
 # =========================
-# UTILITY
+# 2. HELPER FUNCTIONS
 # =========================
-def log(msg):
-    print(f"[{datetime.now(timezone.utc).isoformat()}] {msg}", flush=True)
+
+def log(msg: str):
+    """Stampa messaggi con timestamp."""
+    print(f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] {msg}", flush=True)
+
+def check_ffmpeg():
+    """Verifica che FFmpeg sia installato nel sistema."""
+    if not shutil.which("ffmpeg"):
+        raise RuntimeError("❌ FFmpeg non trovato! Installalo e aggiungilo al PATH di sistema.")
 
 def url_exists(url: str) -> bool:
-    """Controlla se il video è già nel DB per evitare duplicati."""
-    res = supabase.table("intelligence_feed").select("id").eq("url", url).execute()
-    return len(res.data) > 0
-
-def get_or_create_source(name, type_, base_url):
-    """Gestisce la tabella 'sources' per collegare i video al canale giusto."""
-    res = supabase.table("sources").select("*").eq("name", name).execute()
-    data = getattr(res, 'data', [])
-    if data:
-        return data[0]["id"]
-    
-    new_res = supabase.table("sources").insert({
-        "name": name,
-        "type": type_,
-        "base_url": base_url 
-    }).execute()
-    new_data = getattr(new_res, 'data', [])
-    return new_data[0]["id"] if new_data else None
-
-# =========================
-# LOGICA YOUTUBE (IBRIDA)
-# =========================
-
-def get_channel_id_from_handle(handle: str) -> Optional[str]:
-    """Ottiene l'ID numerico del canale partendo dall'handle (@Nome)."""
+    """Controlla se l'URL esiste già nel DB."""
     try:
-        request = youtube_service.channels().list(part="id", forHandle=handle)
-        response = request.execute()
-        return response['items'][0]['id'] if response['items'] else None
-    except HttpError as e:
-        log(f"⚠️ Errore API Channel ID per {handle}: {e}")
-        return None
-
-def get_uploads_playlist_id(channel_id: str) -> Optional[str]:
-    """Trova la playlist 'Uploads' che contiene tutti i video del canale (costa poca quota)."""
-    try:
-        request = youtube_service.channels().list(part="contentDetails", id=channel_id)
-        response = request.execute()
-        if response['items']:
-            return response['items'][0]['contentDetails']['relatedPlaylists']['uploads']
-        return None
-    except HttpError as e:
-        log(f"⚠️ Errore recupero playlist uploads: {e}")
-        return None
-
-def get_latest_videos(playlist_id: str, limit=10) -> List[Dict]:
-    """Scarica gli ultimi video dalla playlist Uploads."""
-    videos = []
-    try:
-        request = youtube_service.playlistItems().list(
-            part="snippet",
-            playlistId=playlist_id,
-            maxResults=limit
-        )
-        response = request.execute()
-        
-        for item in response.get('items', []):
-            snippet = item['snippet']
-            published_at_str = snippet['publishedAt']
-            # Conversione data sicura
-            published_dt = datetime.fromisoformat(published_at_str.replace('Z', '+00:00'))
-            
-            videos.append({
-                "id": snippet['resourceId']['videoId'],
-                "title": snippet['title'],
-                "description": snippet['description'],
-                "published_at": published_dt,
-                "channel_title": snippet['channelTitle'],
-                "url": f"https://www.youtube.com/watch?v={snippet['resourceId']['videoId']}"
-            })
-    except HttpError as e:
-        log(f"⚠️ Errore recupero video lista: {e}")
-    
-    return videos
-
-def get_hybrid_transcript(video_id: str) -> str:
-    """
-    Scarica i sottotitoli usando youtube_transcript_api.
-    Gestisce correttamente gli oggetti e le traduzioni.
-    """
-    try:
-        # 1. Istanziamo l'oggetto API (Fondamentale per il thread safety)
-        ytt_api = YouTubeTranscriptApi() 
-
-        # 2. Otteniamo la lista dei transcript disponibili
-        transcript_list_obj = ytt_api.list(video_id)
-
-        # 3. Cerchiamo Italiano o Inglese
-        try:
-            transcript = transcript_list_obj.find_transcript(['it', 'en'])
-        except Exception:
-            # Fallback: Prendi il primo disponibile (es. Spagnolo) e traducilo in IT
-            first_transcript = next(iter(transcript_list_obj))
-            transcript = first_transcript.translate('it') 
-
-        # 4. Scarichiamo i dati
-        # fetch() restituisce una lista di oggetti, NON dizionari
-        transcript_data = transcript.fetch()
-        
-        # 5. Uniamo il testo accedendo alla proprietà .text dell'oggetto
-        full_text = " ".join([item.text for item in transcript_data])
-        return full_text
-
-    except (TranscriptsDisabled, NoTranscriptFound):
-        # Nessun sottotitolo disponibile
-        return ""
+        res = supabase.table("intelligence_feed").select("id").eq("url", url).execute()
+        return len(res.data) > 0
     except Exception as e:
-        log(f"⚠️ Warning Transcript ({video_id}): {e}")
-        return ""
+        log(f"⚠️ Errore check duplicati: {e}")
+        return False
+
+def get_or_create_source(name: str, url: str) -> str:
+    """Ottiene o crea l'ID della fonte (canale) nel DB."""
+    try:
+        res = supabase.table("sources").select("id").eq("name", name).execute()
+        if res.data:
+            return res.data[0]['id']
+        
+        new = supabase.table("sources").insert({
+            "name": name, 
+            "type": "youtube", 
+            "base_url": url
+        }).execute()
+        return new.data[0]['id'] if new.data else None
+    except Exception as e:
+        log(f"⚠️ Errore gestione source: {e}")
+        return None
 
 # =========================
-# LOGICA INTELLIGENZA ARTIFICIALE
+# 3. CORE LOGIC (Download -> Transcribe -> Analyze)
 # =========================
+
+def download_audio_mp3(video_url: str) -> Optional[str]:
+    """Scarica audio da YT e converte in MP3."""
+    temp_dir = "temp_audio"
+    if not os.path.exists(temp_dir):
+        os.makedirs(temp_dir)
+    
+    unique_name = f"audio_{uuid.uuid4()}"
+    output_path_no_ext = os.path.join(temp_dir, unique_name)
+    
+    # Configurazione YT-DLP
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }],
+        'outtmpl': output_path_no_ext, # yt-dlp aggiungerà .mp3
+        'quiet': True,
+        'noplaylist': True,
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([video_url])
+        
+        final_path = output_path_no_ext + ".mp3"
+        if os.path.exists(final_path):
+            return final_path
+        return None
+    except Exception as e:
+        log(f"❌ Errore Download yt-dlp: {e}")
+        return None
+
+def transcribe_with_assemblyai(file_path: str) -> str:
+    """Invia il file audio ad AssemblyAI."""
+    transcriber = aai.Transcriber()
+    config = aai.TranscriptionConfig(language_code="it") # Forza Italiano
+    
+    try:
+        transcript = transcriber.transcribe(file_path, config=config)
+        
+        if transcript.status == aai.TranscriptStatus.error:
+            log(f"❌ Errore AssemblyAI API: {transcript.error}")
+            return ""
+        
+        return transcript.text
+    except Exception as e:
+        log(f"❌ Eccezione Trascrizione: {e}")
+        return ""
 
 def analyze_with_gemini(text: str) -> dict:
-    """Analizza il testo con Gemini 2.0 Flash e restituisce un JSON."""
+    """Analizza il testo con Gemini."""
     if not text or len(text) < 50:
-        return {"summary": "N/A", "risk_level": "LOW", "countries_involved": [], "keywords": []}
+        return {"summary": "N/A - Testo insufficiente", "risk_level": "LOW", "countries_involved": []}
 
     prompt = """
-    Sei un analista geopolitico e finanziario. Analizza il testo fornito.
-    Restituisci ESCLUSIVAMENTE un JSON valido con questa struttura esatta:
+    Sei un analista di intelligence geopolitica e finanziaria.
+    Analizza la seguente trascrizione video.
+    
+    Restituisci ESCLUSIVAMENTE un JSON valido con questa struttura:
     {
-        "summary": "riassunto in italiano max 3 frasi",
-        "countries_involved": ["paese1", "paese2"],
+        "summary": "Riassunto analitico in italiano (max 5 frasi).",
+        "countries_involved": ["Paese1", "Paese2"],
         "risk_level": "LOW" | "MEDIUM" | "HIGH",
-        "keywords": ["tag1", "tag2", "tag3"]
+        "keywords": ["tag1", "tag2", "tag3", "tag4"],
+        "key_takeaway": "La singola conclusione più importante"
     }
     """
+    
     try:
-        # Limitiamo il testo per evitare token overflow
+        # Tagliamo a 30k caratteri per sicurezza token
         response = gemini_client.models.generate_content(
             model="gemini-2.0-flash",
-            contents=f"{prompt}\n\nTesto da analizzare:\n{text[:25000]}",
+            contents=f"{prompt}\n\nTRASCRIZIONE:\n{text[:30000]}",
             config=types.GenerateContentConfig(response_mime_type="application/json")
         )
         
-        # Pulizia JSON (a volte Gemini aggiunge backticks)
-        raw_json = response.text.replace("```json", "").replace("```", "").strip()
-        return json.loads(raw_json)
-    
+        clean_json = response.text.replace("```json", "").replace("```", "").strip()
+        return json.loads(clean_json)
     except Exception as e:
-        log(f"❌ Errore Analisi AI: {e}")
-        return {"summary": "Errore AI", "error": str(e)}
+        log(f"❌ Errore Gemini: {e}")
+        return {"summary": f"Errore analisi AI: {str(e)}"}
 
 # =========================
-# PROCESSO PRINCIPALE
+# 4. YOUTUBE API LOGIC
 # =========================
 
-def process_channel(handle_or_id: str):
-    # 1. Trova ID Canale
-    channel_id = handle_or_id
-    if handle_or_id.startswith("@"):
-        channel_id = get_channel_id_from_handle(handle_or_id)
-        if not channel_id: return
+def get_channel_videos(handle: str) -> List[Dict]:
+    """Recupera gli ultimi video dal canale usando API ufficiale."""
+    videos = []
+    try:
+        # 1. Ottieni ID Canale e Playlist Uploads
+        res_ch = youtube_service.channels().list(
+            part="id,contentDetails,snippet", 
+            forHandle=handle
+        ).execute()
 
-    # 2. Trova Playlist Uploads (Metodo economico)
-    uploads_id = get_uploads_playlist_id(channel_id)
-    if not uploads_id: return
+        if not res_ch.get('items'):
+            log(f"⚠️ Canale non trovato: {handle}")
+            return []
 
-    log(f"📡 Scansione canale: {channel_id}...")
-    videos = get_latest_videos(uploads_id, limit=10) # Ultimi 10 video
+        channel_item = res_ch['items'][0]
+        channel_id = channel_item['id']
+        channel_title = channel_item['snippet']['title']
+        uploads_id = channel_item['contentDetails']['relatedPlaylists']['uploads']
 
-    if not videos: return
+        # 2. Ottieni Video dalla Playlist
+        res_pl = youtube_service.playlistItems().list(
+            part="snippet",
+            playlistId=uploads_id,
+            maxResults=10  # Prendi ultimi 10 video
+        ).execute()
 
-    # Gestione Source ID nel DB
-    channel_name = videos[0]['channel_title']
-    source_id = get_or_create_source(channel_name, "youtube", f"https://youtube.com/channel/{channel_id}")
-
-    for video in videos:
-        # --- FILTRO DATE ---
-        video_date = video['published_at'].date()
-        now = datetime.now(timezone.utc).date()
-
-        if MODE == "LIVE":
-            # Accetta solo video di oggi o ieri
-            if (now - video_date).days > 1:
-                continue
-        else: # BACKFILL
-            if not (BACKFILL_START <= video_date <= BACKFILL_END):
-                continue
-
-        # --- FILTRO DUPLICATI ---
-        if url_exists(video['url']):
-            log(f"⏭️ Saltato (già presente): {video['title']}")
-            continue
-        
-        log(f"🔄 Elaborazione: {video['title']}")
-
-        # 3. Scarica Testo (Sottotitoli O Fallback)
-        full_text = get_hybrid_transcript(video['id'])
-        
-        if full_text:
-            log("✅ Sottotitoli trovati")
-        else:
-            # FALLBACK CRUCIALE
-            full_text = f"TITOLO: {video['title']}\nDESCRIZIONE: {video['description']}"
-            log("⚠️ Sottotitoli assenti -> Usato Fallback Titolo+Descrizione")
-
-        # 4. Analisi AI
-        analysis = analyze_with_gemini(full_text)
-
-        # 5. Salvataggio DB
-        try:
-            supabase.table("intelligence_feed").insert({
-                "source_id": source_id,
-                "title": video['title'],
-                "url": video['url'],
-                "published_at": video['published_at'].isoformat(),
-                "content": full_text,
-                "analysis": analysis,
-                "raw_metadata": {"id": video['id'], "channel_id": channel_id}
-            }).execute()
-            log(f"💾 Salvato nel DB")
-
-            # --- RATE LIMITING ---
-            # Pausa di 10 secondi per evitare l'errore 429 di Gemini
-            log("⏳ Attesa 10s per quota AI...")
-            time.sleep(10)
-
-        except Exception as e:
-            log(f"❌ Errore salvataggio DB: {e}")
-
-# =========================
-# ENTRY POINT
-# =========================
-if __name__ == "__main__":
-    log(f"--- WORKER START (MODE={MODE}) ---")
+        for item in res_pl.get('items', []):
+            snip = item['snippet']
+            # Parsing data sicuro
+            pub_date = datetime.fromisoformat(snip['publishedAt'].replace('Z', '+00:00'))
+            
+            videos.append({
+                "id": snip['resourceId']['videoId'],
+                "title": snip['title'],
+                "description": snip['description'],
+                "published_at": pub_date,
+                "url": f"https://www.youtube.com/watch?v={snip['resourceId']['videoId']}",
+                "channel_title": channel_title,
+                "channel_id": channel_id
+            })
+            
+    except HttpError as e:
+        log(f"❌ Errore API YouTube: {e}")
     
-    for handle in YOUTUBE_CHANNELS:
-        process_channel(handle)
+    return videos
 
-    log("--- WORKER DONE ---")
+# =========================
+# 5. MAIN LOOP
+# =========================
+
+def process_single_video(video: Dict):
+    log(f"🔄 Avvio processo: {video['title'][:50]}...")
+
+    # 1. Download
+    log("   ⬇️  Scaricamento Audio (yt-dlp)...")
+    mp3_path = download_audio_mp3(video['url'])
+    
+    if not mp3_path:
+        log("   ❌ Skip: Impossibile scaricare audio.")
+        return
+
+    full_text = ""
+    try:
+        # 2. Trascrizione
+        log("   🎙️  Trascrizione (AssemblyAI)...")
+        full_text = transcribe_with_assemblyai(mp3_path)
+        
+        if not full_text:
+            log("   ⚠️ Trascrizione fallita/vuota. Fallback su Descrizione.")
+            full_text = f"TITOLO: {video['title']}\nDESCRIZIONE: {video['description']}"
+        else:
+            log("   ✅ Trascrizione riuscita.")
+
+    finally:
+        # 3. Cleanup (Sempre!)
+        if os.path.exists(mp3_path):
+            os.remove(mp3_path)
+    
+    # 4. Analisi
+    log("   🧠 Analisi Intelligence (Gemini)...")
+    analysis = analyze_with_gemini(full_text)
+
+    # 5. Salvataggio
+    try:
+        source_id = get_or_create_source(video['channel_title'], f"https://youtube.com/channel/{video['channel_id']}")
+        
+        payload = {
+            "source_id": source_id,
+            "title": video['title'],
+            "url": video['url'],
+            "published_at": video['published_at'].isoformat(),
+            "content": full_text,
+            "analysis": analysis,
+            "raw_metadata": {"video_id": video['id']}
+        }
+        
+        supabase.table("intelligence_feed").insert(payload).execute()
+        log("   💾 Salvato con successo nel DB.")
+        
+        # Pausa di sicurezza per API rate limits
+        time.sleep(5)
+
+    except Exception as e:
+        log(f"❌ Errore salvataggio DB: {e}")
+
+if __name__ == "__main__":
+    print(f"\n--- 🚀 WORKER STARTED | MODE: {MODE} ---\n")
+    
+    # Check preliminare FFmpeg
+    check_ffmpeg()
+
+    for handle in YOUTUBE_CHANNELS:
+        log(f"📡 Scansione: {handle}")
+        videos = get_channel_videos(handle)
+        
+        for video in videos:
+            # --- FILTRO DATE ---
+            v_date = video['published_at'].date()
+            if MODE == "BACKFILL":
+                if not (BACKFILL_START <= v_date <= BACKFILL_END):
+                    continue
+            else: # LIVE
+                today = datetime.now(timezone.utc).date()
+                if (today - v_date).days > 2: # Solo ultimi 2 giorni
+                    continue
+
+            # --- FILTRO DUPLICATI ---
+            # Decommentare per saltare video già processati
+            if url_exists(video['url']):
+               log(f"   ⏭️  Già nel DB: {video['title'][:30]}...")
+               continue
+            
+            # --- ESECUZIONE ---
+            process_single_video(video)
+
+    log("--- ✅ WORKER COMPLETED ---")
