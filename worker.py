@@ -133,7 +133,7 @@ def get_hybrid_transcript(video_id: str) -> str:
     try:
         # 1. ISTANZIAMENTO DELL'OGGETTO
         # La documentazione dice: "Make sure to initialize an instance... per thread"
-        ytt_api = YouTubeTranscriptApi() 
+        ytt_api = YouTubeTranscriptApi()
 
         # 2. CHIAMATA AL METODO DI ISTANZA .list()
         # Non usare metodi statici, usiamo l'oggetto creato.
