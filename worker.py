@@ -1,18 +1,21 @@
 import os
 import json
 import time
-import requests
-import traceback
+import glob
+import re
 from datetime import datetime
 from typing import cast, List, Dict, Any
+
+# Importiamo yt-dlp
+import yt_dlp
 
 from googleapiclient.discovery import build
 from google import genai
 from google.genai import types
 from supabase import create_client, Client
 
-# --- SETUP & CONFIG ---
-print("\n🔧 [INIT] Avvio script...")
+# --- CONFIGURAZIONE ---
+print("\n🔧 [INIT] Avvio script (yt-dlp MODE)...")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -32,98 +35,106 @@ except Exception as e:
 
 YOUTUBE_CHANNELS = ["@InvestireBiz"]
 
-# --- 1. SCARICAMENTO SOTTOTITOLI (Proxy + Invidious Extended) ---
-def get_transcript_via_proxy(video_id: str) -> str:
-    print(f"   🕵️  [SUB] Cerco sottotitoli per {video_id}...")
+# --- FUNZIONE PULIZIA TESTO VTT ---
+def clean_vtt_text(vtt_content: str) -> str:
+    """Rimuove timestamp, header e tag HTML dal formato VTT"""
+    lines = vtt_content.splitlines()
+    text_lines = []
+    seen = set() # Per rimuovere duplicati consecutivi o frasi ripetute
     
-    # LISTA ESTESA DI ISTANZE (Per massimizzare le chance)
-    instances = [
-        "https://inv.nadeko.net",
-        "https://invidious.jing.rocks",
-        "https://yewtu.be",
-        "https://vid.puffyan.us",
-        "https://inv.zzls.xyz",
-        "https://invidious.nerdvpn.de",
-        "https://invidious.incogni.to",
-        "https://yt.drgnz.club",
-        "https://invidious.no-logs.com"
-    ]
+    for line in lines:
+        line = line.strip()
+        # Filtra metadati VTT, timestamp e numeri di sequenza
+        if (not line or 
+            line.startswith("WEBVTT") or 
+            "-->" in line or 
+            line.startswith("Kind:") or 
+            line.startswith("Language:") or
+            re.match(r'^\d+$', line)): 
+            continue
+        
+        # Rimuove tag HTML interni (es. <c.colorE5E5E5>)
+        line = re.sub(r'<[^>]+>', '', line)
+        # Rimuove caratteri strani iniziali
+        line = line.replace("&nbsp;", " ")
+        
+        if line and line not in seen:
+            text_lines.append(line)
+            seen.add(line)
+            
+    return " ".join(text_lines)
+
+# --- 1. RECUPERO TESTO (yt-dlp via Proxy) ---
+def get_transcript_ytdlp(video_url: str) -> str:
+    print(f"   🕵️  [YT-DLP] Scarico subs per {video_url}...")
     
-    # Proxy SOCKS5h (Risoluzione DNS remota)
-    proxies = {
-        "http": "socks5h://127.0.0.1:40000",
-        "https": "socks5h://127.0.0.1:40000"
+    # Configurazione per passare dal Proxy WARP
+    ydl_opts = {
+        'proxy': 'socks5://127.0.0.1:40000', # <--- PASSA DAL TUNNEL CLOUDFLARE
+        'skip_download': True,               # Non scaricare il video
+        'writesubtitles': True,              # Scarica subs manuali
+        'writeautomaticsub': True,           # Scarica subs auto-generati (IMPORTANTE!)
+        'subtitleslangs': ['it', 'en'],      # Prima Italiano, poi Inglese
+        'outtmpl': '/tmp/%(id)s',            # Salva nella cartella temporanea
+        'quiet': True,
+        'no_warnings': True,
+        'socket_timeout': 10,
     }
 
-    for instance in instances:
-        try:
-            # Timeout breve per scorrere veloce
-            res = requests.get(f"{instance}/api/v1/captions/{video_id}", proxies=proxies, timeout=5)
-            
-            if res.status_code != 200: continue
-            
-            captions = res.json()
-            if not isinstance(captions, list): continue
-            
-            # Logica scelta lingua: IT > EN > Primo
-            target = None
-            for c in captions:
-                if c.get('language') == 'Italian' or c.get('code') == 'it':
-                    target = c; break
-            
-            if not target:
-                for c in captions:
-                    if 'en' in c.get('code', ''): target = c; break
-            
-            if not target and captions: target = captions[0]
+    try:
+        # Pulisce vecchi file in /tmp per non fare confusione
+        for f in glob.glob("/tmp/*.vtt"): os.remove(f)
 
-            if target:
-                print(f"      ⬇️  Trovato su {instance}. Scarico...")
-                full_url = f"{instance}{target['url']}"
-                text_res = requests.get(full_url, proxies=proxies, timeout=10)
-                
-                if text_res.status_code == 200:
-                    raw_text = text_res.text
-                    clean_text = ""
-                    
-                    # Parsing JSON (alcune istanze tornano JSON)
-                    if raw_text.strip().startswith('{') or raw_text.strip().startswith('['):
-                        try:
-                            data = json.loads(raw_text)
-                            clean_text = " ".join([x.get('content', '') for x in data if 'content' in x])
-                        except: pass
-                    # Parsing VTT
-                    else:
-                        lines = [l.strip() for l in raw_text.splitlines() 
-                                 if "-->" not in l and l.strip() and not l.startswith(("WEBVTT", "NOTE"))]
-                        clean_text = " ".join(dict.fromkeys(lines)) # Deduplica mantenendo ordine
+        # Esegue il download dei soli sottotitoli
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([video_url])
 
-                    if len(clean_text) > 50:
-                        print(f"   ✅ Testo estratto: {len(clean_text)} chars.")
-                        return clean_text
-
-        except Exception:
-            # print(f"Debug: fail su {instance}") # Decommenta se vuoi vedere i fallimenti
-            continue
+        # Cerca il file scaricato
+        files = glob.glob("/tmp/*.vtt")
+        if not files:
+            print("      ⚠️ yt-dlp non ha trovato file VTT (niente subs).")
+            return ""
+        
+        # Se c'è sia IT che EN, preferisci IT (yt-dlp aggiunge la lingua nel nome file)
+        target_file = files[0]
+        for f in files:
+            if ".it." in f: 
+                target_file = f
+                break
+        
+        print(f"      ✅ File VTT scaricato: {os.path.basename(target_file)}")
+        
+        # Legge e pulisce
+        with open(target_file, 'r', encoding='utf-8') as f:
+            content = f.read()
             
-    print("   ⚠️ Sottotitoli non trovati (Fallback Descrizione).")
-    return ""
+        clean_text = clean_vtt_text(content)
+        
+        if len(clean_text) > 100:
+            print(f"      ✅ Testo pulito ed estratto: {len(clean_text)} caratteri.")
+            return clean_text
+        else:
+            print("      ⚠️ Testo troppo breve dopo la pulizia.")
+            return ""
 
-# --- 2. ANALISI GEMINI (Con Retry 429) ---
+    except Exception as e:
+        print(f"      ❌ Errore yt-dlp: {e}")
+        return ""
+
+# --- 2. ANALISI GEMINI (Retry 429) ---
 def analyze_gemini(text: str) -> dict:
     if not text or len(text) < 50: return {"summary": "N/A"}
     
     print(f"   🧠 [AI] Invio a Gemini ({len(text)} chars)...")
     
-    for attempt in range(3): # 3 Tentativi
+    for attempt in range(3):
         try:
             res = gemini_client.models.generate_content(
                 model="gemini-2.0-flash",
-                contents=f'Analizza JSON: {{ "summary": "Riassunto dettagliato", "risk_level": "LOW", "countries_involved": [], "key_takeaway": "Punto chiave" }}\nTEXT:{text[:25000]}',
+                contents=f'Analizza JSON: {{ "summary": "Riassunto dettagliato", "risk_level": "LOW", "countries_involved": [], "key_takeaway": "Punto chiave" }}\nTEXT:{text[:28000]}',
                 config=types.GenerateContentConfig(response_mime_type="application/json")
             )
             return json.loads(res.text.replace("```json","").replace("```","").strip())
-        
         except Exception as e:
             if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
                 wait = 35 * (attempt + 1)
@@ -134,22 +145,20 @@ def analyze_gemini(text: str) -> dict:
                 return {}
     return {}
 
-# --- 3. GESTIONE DB (Source ID) ---
+# --- 3. DATABASE (Fix Constraint) ---
 def get_source_id(name, ch_id):
     try:
-        # Check esistenza
         res = supabase.table("sources").select("id").eq("name", name).execute()
+        # Fix per typing Pylance
         data = cast(List[Dict[str, Any]], res.data)
         
         if data: return str(data[0]['id'])
         
-        # Creazione Nuova Source
-        print("      ➕ Creo nuova source nel DB...")
-        
-        # type='youtube' è corretto per il tuo DB
+        print("      ➕ Creo nuova source...")
+        # type='youtube' è fondamentale per il check constraint del DB
         new = supabase.table("sources").insert({
             "name": name, 
-            "type": "youtube",
+            "type": "youtube", 
             "base_url": ch_id
         }).execute()
         
@@ -157,7 +166,7 @@ def get_source_id(name, ch_id):
         if new_data: return str(new_data[0]['id'])
             
     except Exception as e:
-        print(f"   ❌ [DB ERROR] get_source_id: {e}")
+        print(f"   ❌ DB Error: {e}")
     return None
 
 def get_channel_videos(handle):
@@ -183,7 +192,7 @@ def get_channel_videos(handle):
 
 # --- MAIN LOOP ---
 if __name__ == "__main__":
-    print("\n--- 🚀 START WORKER (OPTIMIZED) ---")
+    print("\n--- 🚀 START WORKER (YT-DLP + AUTO-SUBS) ---")
     
     for handle in YOUTUBE_CHANNELS:
         videos = get_channel_videos(handle)
@@ -191,26 +200,31 @@ if __name__ == "__main__":
         for v in videos:
             print(f"\n🔄 {v['title'][:40]}...")
             
-            # Check DB Preliminare (Per risparmiare API Gemini)
+            # Check DB
             try:
                 exists = supabase.table("intelligence_feed").select("id").eq("url", v['url']).execute()
                 exists_data = cast(List[Dict[str, Any]], exists.data)
                 if exists_data:
-                    print("   ⏭️  Video già analizzato. Salto.")
+                    print("   ⏭️  Già presente nel DB.")
                     continue
             except: pass
 
-            # 1. Testo
-            text = get_transcript_via_proxy(v['id'])
-            method = "Invidious+Proxy"
+            # 1. RECUPERO TESTO (Priorità yt-dlp)
+            text = get_transcript_ytdlp(v['url'])
+            method = "yt-dlp+Proxy"
+            
+            # Fallback solo se yt-dlp fallisce totalmente
             if not text:
+                print("   ⚠️ Fallback Descrizione (subs assenti).")
                 text = f"{v['title']}\n{v['desc']}"
                 method = "Descrizione"
-            
-            # 2. Analisi
+            else:
+                print("   🔥 SUBS RECUPERATI!")
+
+            # 2. ANALISI
             analysis = analyze_gemini(text)
             
-            # 3. Salvataggio
+            # 3. SALVATAGGIO
             sid = get_source_id(v['ch_title'], v['ch_id'])
             
             if sid:
@@ -227,13 +241,11 @@ if __name__ == "__main__":
                     supabase.table("intelligence_feed").insert(data).execute()
                     print(f"   💾 SALVATO CON SUCCESSO!")
                 except Exception as e:
-                    # Gestione elegante dell'errore duplicato
-                    if "23505" in str(e) or "duplicate key" in str(e):
-                         print("   ⏭️  Già presente (rilevato all'inserimento).")
+                    if "duplicate" in str(e) or "23505" in str(e):
+                        print("   ⏭️  Già presente (rilevato al salvataggio).")
                     else:
-                        print(f"   ❌ ERRORE INSERT: {e}")
+                        print(f"   ❌ Errore Insert: {e}")
             
-            # Pausa anti-ban
             print("   💤 Pause 10s...")
             time.sleep(10)
             
