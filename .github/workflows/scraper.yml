@@ -10,7 +10,6 @@ on:
 
 jobs:
   run-worker:
-    # Usiamo Ubuntu 22.04 per massima compatibilità con WARP
     runs-on: ubuntu-22.04
 
     steps:
@@ -25,32 +24,21 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          # 'pysocks' è FONDAMENTALE per il supporto SOCKS5 in requests
-          pip install youtube-transcript-api requests google-api-python-client google-genai supabase pandas pysocks
+          # pysocks serve per il proxy
+          pip install requests google-api-python-client google-genai supabase pandas pysocks
 
-      # 🛡️ INSTALLAZIONE MANUALE WARP (Proxy Mode)
+      # 🛡️ WARP PROXY MODE
       - name: Install & Configure WARP
         run: |
-          # 1. Aggiungi repo Cloudflare
           curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
           echo "deb [arch=amd64 signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
-          
-          # 2. Installa client
           sudo apt-get update && sudo apt-get install -y cloudflare-warp
-
-          # 3. Configura come Proxy sulla porta 40000
           echo "yes" | sudo warp-cli --accept-tos registration new
           sudo warp-cli --accept-tos mode proxy
           sudo warp-cli --accept-tos proxy port 40000
-          
-          # 4. Connetti
           sudo warp-cli --accept-tos connect
-          
-          # Attendi connessione
           sleep 5
-          
-          # Verifica che il proxy risponda
-          curl -x socks5h://127.0.0.1:40000 -I https://www.google.com || echo "⚠️ Warning: Proxy check warning"
+          curl -x socks5h://127.0.0.1:40000 -I https://www.google.com || echo "⚠️ Proxy check failed"
 
       - name: Run worker
         env:
