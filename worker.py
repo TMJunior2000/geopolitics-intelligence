@@ -2,22 +2,30 @@ import os
 import json
 import time
 import requests
+import traceback  # Fondamentale per vedere i dettagli dell'errore
 from datetime import datetime
 
-# Importiamo la libreria
-from youtube_transcript_api import YouTubeTranscriptApi
+# Import librerie
+try:
+    from youtube_transcript_api import YouTubeTranscriptApi
+except ImportError:
+    print("❌ CRITICO: Libreria youtube_transcript_api non installata.")
+    exit(1)
+
 from googleapiclient.discovery import build
 from google import genai
 from google.genai import types
 from supabase import create_client, Client
 
-# --- CONFIG ---
+# --- SETUP VARIABILI ---
+print("🔧 [INIT] Caricamento variabili d'ambiente...")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY or not GOOGLE_API_KEY:
-    raise ValueError("❌ Variabili mancanti.")
+    print("❌ ERRORE: Variabili d'ambiente mancanti.")
+    exit(1)
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 gemini_client = genai.Client(api_key=GOOGLE_API_KEY)
@@ -25,135 +33,201 @@ youtube_service = build('youtube', 'v3', developerKey=GOOGLE_API_KEY)
 
 YOUTUBE_CHANNELS = ["@InvestireBiz"]
 
-# --- FUNZIONE RECUPERO TESTO CORRETTA ---
+# ==========================================
+# 🔍 DIAGNOSTICA LIBRERIA (Il punto critico)
+# ==========================================
+print("\n--- 🔍 DIAGNOSTICA LIBRERIA ---")
+print(f"Libreria importata: {YouTubeTranscriptApi}")
+print(f"Metodi disponibili: {dir(YouTubeTranscriptApi)}")
+if hasattr(YouTubeTranscriptApi, 'list_transcripts'):
+    print("✅ Metodo STATICO 'list_transcripts' TROVATO (Versione Standard).")
+elif hasattr(YouTubeTranscriptApi, 'list'):
+    print("⚠️ Metodo 'list' trovato. Sembra una versione vecchia o custom.")
+else:
+    print("❌ Nessun metodo noto trovato. La libreria è corrotta o diversa.")
+print("-------------------------------\n")
+
+# ==========================================
+# FUNZIONI
+# ==========================================
+
 def get_transcript(video_id: str) -> str:
-    print(f"   🕵️  Scarico sottotitoli per {video_id} (via WARP VPN)...")
+    print(f"   🕵️  [DEBUG] Avvio get_transcript per ID: {video_id}")
+    
     try:
-        # 1. ISTANZIA L'OGGETTO (Correzione Fondamentale)
-        # La tua classe richiede di essere inizializzata prima dell'uso.
-        ytt = YouTubeTranscriptApi()
+        # TENTATIVO 1: Metodo Standard Statico (Libreria Ufficiale)
+        if hasattr(YouTubeTranscriptApi, 'list_transcripts'):
+            print("   👉 [DEBUG] Chiamo YouTubeTranscriptApi.list_transcripts(video_id)...")
+            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
         
-        # 2. CHIAMA IL METODO DELL'ISTANZA (.list invece di .list_transcripts)
-        transcript_list = ytt.list(video_id)
+        # TENTATIVO 2: Istanza (Se hai una classe custom)
+        else:
+            print("   👉 [DEBUG] Provo a istanziare la classe (Fallback)...")
+            ytt = YouTubeTranscriptApi() 
+            if hasattr(ytt, 'list_transcripts'):
+                transcript_list = ytt.list_transcripts(video_id)
+            elif hasattr(ytt, 'list'):
+                transcript_list = ytt.list(video_id)
+            else:
+                print("   ❌ [DEBUG] Impossibile trovare un metodo valido.")
+                return ""
+
+        print("   ✅ [DEBUG] Lista trascritti ottenuta. Cerco lingua...")
         
+        # Logica selezione lingua
         transcript = None
         try:
-            # Cerca IT o EN
+            print("   👉 [DEBUG] Cerco 'it' o 'en' manuale...")
             transcript = transcript_list.find_transcript(['it', 'en'])
-        except:
-            # Fallback: Traduci il primo disponibile
+        except Exception as e:
+            print(f"   ⚠️ [DEBUG] Manuale non trovato ({e}). Provo traduzione automatica...")
             try:
-                first = next(iter(transcript_list))
-                transcript = first.translate('it')
-            except:
-                pass
+                # Prendi il primo disponibile (es. generato auto)
+                first_transcript = next(iter(transcript_list))
+                print(f"   👉 [DEBUG] Trovato trascritto in lingua: {first_transcript.language_code}")
+                if first_transcript.language_code == 'it':
+                    transcript = first_transcript
+                else:
+                    print("   👉 [DEBUG] Traduco in Italiano...")
+                    transcript = first_transcript.translate('it')
+            except Exception as e2:
+                print(f"   ❌ [DEBUG] Fallita anche la traduzione: {e2}")
+                return ""
 
         if transcript:
+            print("   👉 [DEBUG] Fetching dati testuali...")
             data = transcript.fetch()
-            # Unisce il testo gestendo sia oggetti che dizionari
-            full_text = ""
-            parts = []
-            for i in data:
-                if isinstance(i, dict):
-                    parts.append(i.get('text', ''))
-                elif hasattr(i, 'text'):
-                    parts.append(i.text)
             
-            full_text = " ".join(parts)
-            if full_text:
-                print("   ✅ Successo!")
-                return full_text
+            # Parsing robusto
+            text_parts = []
+            for item in data:
+                # Gestisce sia dict {'text': '...'} che oggetti
+                if isinstance(item, dict):
+                    text_parts.append(item.get('text', ''))
+                elif hasattr(item, 'text'):
+                    text_parts.append(item.text)
+                else:
+                    text_parts.append(str(item))
+            
+            full_text = " ".join(text_parts)
+            print(f"   ✅ [DEBUG] Testo estratto: {len(full_text)} caratteri.")
+            return full_text
 
     except Exception as e:
-        print(f"   ⚠️ Errore Transcript: {e}")
-        
+        print(f"   ❌ [DEBUG] ERRORE CRITICO in get_transcript:")
+        print(traceback.format_exc()) # Stampa l'errore completo con numeri di riga
+        return ""
+    
     return ""
 
-# --- ANALISI ---
 def analyze_gemini(text: str) -> dict:
-    if not text or len(text) < 50: return {"summary": "N/A"}
-    
-    prompt = """
-    Analizza questo testo. JSON Output:
-    { "summary": "Riassunto", "countries_involved": [], "risk_level": "LOW", "key_takeaway": "..." }
-    """
+    if not text: return {"summary": "N/A"}
+    print(f"   🧠 [DEBUG] Invio {len(text)} caratteri a Gemini...")
     try:
         res = gemini_client.models.generate_content(
             model="gemini-2.0-flash",
-            contents=f"{prompt}\nTEXT:{text[:30000]}",
+            contents=f"Analizza: {text[:30000]}",
             config=types.GenerateContentConfig(response_mime_type="application/json")
         )
+        print("   ✅ [DEBUG] Gemini ha risposto.")
         return json.loads(res.text.replace("```json","").replace("```","").strip())
-    except: return {}
+    except Exception as e:
+        print(f"   ❌ [DEBUG] Errore Gemini: {e}")
+        return {}
 
-# --- UTILS ---
+def get_channel_videos(handle):
+    print(f"📡 [DEBUG] Scansiono canale: {handle}")
+    try:
+        res = youtube_service.channels().list(part="contentDetails,snippet", forHandle=handle).execute()
+        if not res.get('items'): 
+            print("   ⚠️ [DEBUG] Nessun canale trovato con questo handle.")
+            return []
+        
+        upl = res['items'][0]['contentDetails']['relatedPlaylists']['uploads']
+        ch_title = res['items'][0]['snippet']['title']
+        ch_id = res['items'][0]['id']
+        
+        print(f"   👉 [DEBUG] ID Uploads: {upl}. Recupero ultimi 5 video...")
+        pl = youtube_service.playlistItems().list(part="snippet", playlistId=upl, maxResults=5).execute()
+        
+        videos = []
+        for i in pl.get('items', []):
+            vid = i['snippet']['resourceId']['videoId']
+            print(f"   👉 [DEBUG] Trovato video: {vid} - {i['snippet']['title'][:30]}...")
+            videos.append({
+                "id": vid,
+                "title": i['snippet']['title'],
+                "desc": i['snippet']['description'],
+                "date": i['snippet']['publishedAt'],
+                "url": f"https://www.youtube.com/watch?v={vid}",
+                "ch_title": ch_title, "ch_id": ch_id
+            })
+        return videos
+    except Exception as e:
+        print(f"   ❌ [DEBUG] Errore API YouTube Data: {e}")
+        return []
+
 def get_source_id(name, ch_id):
     try:
         res = supabase.table("sources").select("id").eq("name", name).execute()
         if res.data: return str(res.data[0]['id'])
         new = supabase.table("sources").insert({"name": name, "type": "yt", "base_url": ch_id}).execute()
         return str(new.data[0]['id']) if new.data else None
-    except: return None
+    except Exception as e:
+        print(f"   ❌ [DEBUG] Errore Source ID: {e}")
+        return None
 
 def url_exists(url):
     try:
-        return len(supabase.table("intelligence_feed").select("id").eq("url", url).execute().data) > 0
+        res = supabase.table("intelligence_feed").select("id").eq("url", url).execute()
+        exists = len(res.data) > 0
+        if exists: print(f"   ⏭️ [DEBUG] URL già nel DB: {url}")
+        return exists
     except: return False
 
-def get_channel_videos(handle):
-    videos = []
-    try:
-        res = youtube_service.channels().list(part="contentDetails,snippet", forHandle=handle).execute()
-        if not res.get('items'): return []
-        upl = res['items'][0]['contentDetails']['relatedPlaylists']['uploads']
-        ch_title = res['items'][0]['snippet']['title']
-        ch_id = res['items'][0]['id']
-        
-        pl = youtube_service.playlistItems().list(part="snippet", playlistId=upl, maxResults=5).execute()
-        for i in pl.get('items', []):
-            videos.append({
-                "id": i['snippet']['resourceId']['videoId'],
-                "title": i['snippet']['title'],
-                "desc": i['snippet']['description'],
-                "date": i['snippet']['publishedAt'],
-                "url": f"https://www.youtube.com/watch?v={i['snippet']['resourceId']['videoId']}",
-                "ch_title": ch_title, "ch_id": ch_id
-            })
-    except: pass
-    return videos
-
-# --- MAIN ---
+# ==========================================
+# MAIN LOOP
+# ==========================================
 if __name__ == "__main__":
-    print("--- 🚀 START WORKER (WARP + INSTANCE FIX) ---")
+    print(f"\n--- 🚀 START WORKER DEBUG MODE ({datetime.now()}) ---")
+    
     for handle in YOUTUBE_CHANNELS:
-        for v in get_channel_videos(handle):
+        videos = get_channel_videos(handle)
+        
+        if not videos:
+            print("⚠️ Nessun video trovato o errore API.")
+        
+        for v in videos:
             if url_exists(v['url']): continue
             
-            print(f"🔄 {v['title'][:40]}...")
+            print(f"\n🔄 Processing: {v['title'][:40]}...")
             
-            # 1. TESTO (API UFFICIALE + VPN)
+            # 1. TESTO
             text = get_transcript(v['id'])
             method = "Transcript API"
             
-            # 2. FALLBACK
             if not text:
                 print("   ⚠️ Sottotitoli assenti. Uso descrizione.")
                 text = f"{v['title']}\n{v['desc']}"
                 method = "Descrizione"
             
-            # 3. SALVA
+            # 2. ANALISI
             analysis = analyze_gemini(text)
-            sid = get_source_id(v['ch_title'], v['ch_id'])
             
+            # 3. SALVATAGGIO
+            sid = get_source_id(v['ch_title'], v['ch_id'])
             if sid:
                 try:
+                    print("   💾 [DEBUG] Salvataggio su Supabase...")
                     supabase.table("intelligence_feed").insert({
                         "source_id": sid, "title": v['title'], "url": v['url'],
                         "published_at": v['date'], "content": text, "analysis": analysis,
                         "raw_metadata": {"vid": v['id'], "method": method}
                     }).execute()
-                    print("   💾 Salvato.")
-                except: print("   ⏭️ Duplicato.")
+                    print("   ✅ Salvato.")
+                except Exception as e:
+                    print(f"   ❌ Errore Insert DB: {e}")
             
             time.sleep(1)
-    print("--- END ---")
+            
+    print("\n--- ✅ WORKER FINISHED ---")
