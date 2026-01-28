@@ -1,6 +1,8 @@
 altair==6.0.0
 annotated-types==0.7.0
 anyio==4.12.1
+apify_client==2.4.0
+apify_shared==2.2.0
 assemblyai==0.48.4
 attrs==25.4.0
 blinker==1.9.0
@@ -30,10 +32,12 @@ httplib2==0.31.2
 httpx==0.28.1
 hyperframe==6.1.0
 idna==3.11
+impit==0.9.3
 Jinja2==3.1.6
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
 MarkupSafe==3.0.3
+more-itertools==10.8.0
 multidict==6.7.1
 narwhals==2.15.0
 numpy==2.4.1
