@@ -61,6 +61,5 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           ASSEMBLYAI_KEY: ${{ secrets.ASSEMBLYAI_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }} 
         run: |
           python worker.py

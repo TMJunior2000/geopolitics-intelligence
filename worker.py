@@ -10,6 +10,7 @@ from typing import List, Optional, Dict
 # --- LIBRERIE ESTERNE ---
 import yt_dlp
 import assemblyai as aai
+from youtube_transcript_api import YouTubeTranscriptApi
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from google import genai
@@ -17,333 +18,200 @@ from google.genai import types
 from supabase import create_client, Client
 
 # =========================
-# 1. CONFIGURAZIONE & SETUP
+# CONFIGURAZIONE
 # =========================
-
-# Caricamento Variabili Ambiente
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 ASSEMBLYAI_KEY = os.getenv("ASSEMBLYAI_KEY")
-
-# Verifica critica iniziale
-if not all([SUPABASE_URL, SUPABASE_KEY, GOOGLE_API_KEY, ASSEMBLYAI_KEY]):
-    raise ValueError("❌ ERRORE: Mancano una o più variabili d'ambiente nel file .env (SUPABASE_URL, SUPABASE_KEY, GOOGLE_API_KEY, ASSEMBLYAI_KEY)")
-
-# Configurazione Modalità
 MODE = os.getenv("MODE", "LIVE").upper()
-# Date per Backfill (modificare se necessario)
 BACKFILL_START = dt.date(2026, 1, 1)
 BACKFILL_END = dt.date(2026, 1, 31)
 
-# Lista Canali
-YOUTUBE_CHANNELS = [
-    "@InvestireBiz",
-    # Aggiungi qui altri canali es: "@NovaLectio"
-]
+YOUTUBE_CHANNELS = ["@InvestireBiz"]
 
-# Inizializzazione Clienti
-try:
-    aai.settings.api_key = ASSEMBLYAI_KEY
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-    gemini_client = genai.Client(api_key=GOOGLE_API_KEY)
-    youtube_service = build('youtube', 'v3', developerKey=GOOGLE_API_KEY)
-except Exception as e:
-    raise RuntimeError(f"❌ Errore critico inizializzazione client: {e}")
+# Init Clients
+aai.settings.api_key = ASSEMBLYAI_KEY
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+gemini_client = genai.Client(api_key=GOOGLE_API_KEY)
+youtube_service = build('youtube', 'v3', developerKey=GOOGLE_API_KEY)
 
 # =========================
-# 2. HELPER FUNCTIONS
+# LOGICA DI DOWNLOAD (STRATEGIA TRIPLA)
 # =========================
 
-def log(msg: str):
-    """Stampa messaggi con timestamp."""
-    print(f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] {msg}", flush=True)
-
-def check_ffmpeg():
-    """Verifica che FFmpeg sia installato nel sistema."""
-    if not shutil.which("ffmpeg"):
-        raise RuntimeError("❌ FFmpeg non trovato! Installalo e aggiungilo al PATH di sistema.")
-
-def url_exists(url: str) -> bool:
-    """Controlla se l'URL esiste già nel DB."""
-    try:
-        res = supabase.table("intelligence_feed").select("id").eq("url", url).execute()
-        return len(res.data) > 0
-    except Exception as e:
-        log(f"⚠️ Errore check duplicati: {e}")
-        return False
-
-def get_or_create_source(name: str, url: str) -> str:
-    """Ottiene o crea l'ID della fonte (canale) nel DB."""
-    try:
-        res = supabase.table("sources").select("id").eq("name", name).execute()
-        if res.data:
-            return res.data[0]['id']
-        
-        new = supabase.table("sources").insert({
-            "name": name, 
-            "type": "youtube", 
-            "base_url": url
-        }).execute()
-        return new.data[0]['id'] if new.data else None
-    except Exception as e:
-        log(f"⚠️ Errore gestione source: {e}")
-        return None
-
-# =========================
-# 3. CORE LOGIC (Download -> Transcribe -> Analyze)
-# =========================
-
-def download_audio_mp3(video_url: str) -> Optional[str]:
-    """Scarica audio da YT usando Cookies e User Agent robusti."""
+def download_audio_android_strategy(video_url: str) -> Optional[str]:
+    """Prova a scaricare usando l'API Android (spesso non bloccata)."""
     temp_dir = "temp_audio"
-    if not os.path.exists(temp_dir):
-        os.makedirs(temp_dir)
+    if not os.path.exists(temp_dir): os.makedirs(temp_dir)
     
     unique_name = f"audio_{uuid.uuid4()}"
-    output_path_no_ext = os.path.join(temp_dir, unique_name)
-    
-    # --- GESTIONE COOKIES ---
-    # Creiamo un file cookies temporaneo se la variabile d'ambiente esiste
-    cookies_path = None
-    env_cookies = os.getenv("YOUTUBE_COOKIES")
-    if env_cookies:
-        cookies_path = "cookies.txt"
-        with open(cookies_path, "w") as f:
-            f.write(env_cookies)
-    
-    ydl_opts = {
-            # CAMBIAMENTO 1: Chiediamo m4a invece di "bestaudio" generico
-            # Questo evita i formati HLS frammentati che danno errore 403
-            'format': 'bestaudio[ext=m4a]/bestaudio/best',
-            
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }],
-            'outtmpl': output_path_no_ext,
-            'quiet': False, # Mettiamo False per vedere i log se fallisce
-            'noplaylist': True,
-            
-            # CAMBIAMENTO 2: User Agent di un iPhone (spesso meno bloccato dei PC)
-            'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
-            
-            'nocheckcertificate': True,
-            'ignoreerrors': True,
-        }
+    output_path = os.path.join(temp_dir, unique_name)
 
-    # Se abbiamo i cookies, usiamoli!
-    if cookies_path:
-        ydl_opts['cookiefile'] = cookies_path
+    # Configurazione "Android Mobile"
+    ydl_opts = {
+        'format': 'bestaudio[ext=m4a]/bestaudio/best',
+        'outtmpl': output_path,
+        'quiet': True,
+        'noplaylist': True,
+        # TRUCCO: Usiamo il client Android che è meno controllato
+        'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }],
+    }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([video_url])
-        
-        # Pulizia file cookies per sicurezza
-        if cookies_path and os.path.exists(cookies_path):
-            os.remove(cookies_path)
-
-        final_path = output_path_no_ext + ".mp3"
-        if os.path.exists(final_path):
-            return final_path
-        return None
-
+        return output_path + ".mp3"
     except Exception as e:
-        log(f"❌ Errore Download yt-dlp: {e}")
-        # Pulizia anche in caso di errore
-        if cookies_path and os.path.exists(cookies_path):
-            os.remove(cookies_path)
+        print(f"   ⚠️ Metodo Android fallito: {e}")
         return None
 
-def transcribe_with_assemblyai(file_path: str) -> str:
-    """Invia il file audio ad AssemblyAI."""
-    transcriber = aai.Transcriber()
-    config = aai.TranscriptionConfig(language_code="it") # Forza Italiano
-    
+def get_transcript_text(video_id: str) -> str:
+    """FALLBACK: Scarica i sottotitoli se l'audio è bloccato."""
     try:
-        transcript = transcriber.transcribe(file_path, config=config)
+        # Usa proxy vuoto o configurazione base
+        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
         
-        if transcript.status == aai.TranscriptStatus.error:
-            log(f"❌ Errore AssemblyAI API: {transcript.error}")
-            return ""
-        
-        return transcript.text
+        # Cerca IT o EN
+        try:
+            transcript = transcript_list.find_transcript(['it', 'en'])
+        except:
+            transcript = transcript_list[0].translate('it')
+
+        transcript_data = transcript.fetch()
+        return " ".join([item['text'] for item in transcript_data])
     except Exception as e:
-        log(f"❌ Eccezione Trascrizione: {e}")
+        print(f"   ⚠️ Fallback Transcript fallito: {e}")
         return ""
 
-def analyze_with_gemini(text: str) -> dict:
-    """Analizza il testo con Gemini."""
-    if not text or len(text) < 50:
-        return {"summary": "N/A - Testo insufficiente", "risk_level": "LOW", "countries_involved": []}
-
-    prompt = """
-    Sei un analista di intelligence geopolitica e finanziaria.
-    Analizza la seguente trascrizione video.
-    
-    Restituisci ESCLUSIVAMENTE un JSON valido con questa struttura:
-    {
-        "summary": "Riassunto analitico in italiano (max 5 frasi).",
-        "countries_involved": ["Paese1", "Paese2"],
-        "risk_level": "LOW" | "MEDIUM" | "HIGH",
-        "keywords": ["tag1", "tag2", "tag3", "tag4"],
-        "key_takeaway": "La singola conclusione più importante"
-    }
-    """
-    
+def transcribe_with_assemblyai(file_path: str) -> str:
+    """Trascrive file audio."""
+    transcriber = aai.Transcriber()
+    config = aai.TranscriptionConfig(language_code="it")
     try:
-        # Tagliamo a 30k caratteri per sicurezza token
+        transcript = transcriber.transcribe(file_path, config=config)
+        return transcript.text if transcript.status != aai.TranscriptStatus.error else ""
+    except:
+        return ""
+
+# =========================
+# INTELLIGENZA ARTIFICIALE
+# =========================
+
+def analyze_with_gemini(text: str) -> dict:
+    if not text or len(text) < 50:
+        return {"summary": "N/A", "risk_level": "LOW", "countries_involved": []}
+        
+    prompt = """
+    Analizza il testo. Restituisci JSON:
+    { "summary": "...", "countries_involved": [], "risk_level": "LOW/MEDIUM/HIGH", "keywords": [] }
+    """
+    try:
         response = gemini_client.models.generate_content(
             model="gemini-2.0-flash",
-            contents=f"{prompt}\n\nTRASCRIZIONE:\n{text[:30000]}",
+            contents=f"{prompt}\n\nTESTO:\n{text[:30000]}",
             config=types.GenerateContentConfig(response_mime_type="application/json")
         )
-        
-        clean_json = response.text.replace("```json", "").replace("```", "").strip()
-        return json.loads(clean_json)
+        return json.loads(response.text.replace("```json", "").replace("```", "").strip())
     except Exception as e:
-        log(f"❌ Errore Gemini: {e}")
-        return {"summary": f"Errore analisi AI: {str(e)}"}
+        return {"summary": f"Errore AI: {str(e)}"}
 
 # =========================
-# 4. YOUTUBE API LOGIC
+# MAIN LOOP
 # =========================
 
-def get_channel_videos(handle: str) -> List[Dict]:
-    """Recupera gli ultimi video dal canale usando API ufficiale."""
-    videos = []
-    try:
-        # 1. Ottieni ID Canale e Playlist Uploads
-        res_ch = youtube_service.channels().list(
-            part="id,contentDetails,snippet", 
-            forHandle=handle
-        ).execute()
-
-        if not res_ch.get('items'):
-            log(f"⚠️ Canale non trovato: {handle}")
-            return []
-
-        channel_item = res_ch['items'][0]
-        channel_id = channel_item['id']
-        channel_title = channel_item['snippet']['title']
-        uploads_id = channel_item['contentDetails']['relatedPlaylists']['uploads']
-
-        # 2. Ottieni Video dalla Playlist
-        res_pl = youtube_service.playlistItems().list(
-            part="snippet",
-            playlistId=uploads_id,
-            maxResults=10  # Prendi ultimi 10 video
-        ).execute()
-
-        for item in res_pl.get('items', []):
-            snip = item['snippet']
-            # Parsing data sicuro
-            pub_date = datetime.fromisoformat(snip['publishedAt'].replace('Z', '+00:00'))
-            
-            videos.append({
-                "id": snip['resourceId']['videoId'],
-                "title": snip['title'],
-                "description": snip['description'],
-                "published_at": pub_date,
-                "url": f"https://www.youtube.com/watch?v={snip['resourceId']['videoId']}",
-                "channel_title": channel_title,
-                "channel_id": channel_id
-            })
-            
-    except HttpError as e:
-        log(f"❌ Errore API YouTube: {e}")
-    
-    return videos
-
-# =========================
-# 5. MAIN LOOP
-# =========================
-
-def process_single_video(video: Dict):
-    log(f"🔄 Avvio processo: {video['title'][:50]}...")
-
-    # 1. Download
-    log("   ⬇️  Scaricamento Audio (yt-dlp)...")
-    mp3_path = download_audio_mp3(video['url'])
-    
-    if not mp3_path:
-        log("   ❌ Skip: Impossibile scaricare audio.")
-        return
-
+def process_video(video):
+    print(f"🔄 Processing: {video['title'][:40]}...")
     full_text = ""
-    try:
-        # 2. Trascrizione
-        log("   🎙️  Trascrizione (AssemblyAI)...")
-        full_text = transcribe_with_assemblyai(mp3_path)
-        
-        if not full_text:
-            log("   ⚠️ Trascrizione fallita/vuota. Fallback su Descrizione.")
-            full_text = f"TITOLO: {video['title']}\nDESCRIZIONE: {video['description']}"
-        else:
-            log("   ✅ Trascrizione riuscita.")
 
-    finally:
-        # 3. Cleanup (Sempre!)
-        if os.path.exists(mp3_path):
-            os.remove(mp3_path)
+    # TENTATIVO 1: SCARICA AUDIO (Massima Qualità)
+    mp3_path = download_audio_android_strategy(video['url'])
     
-    # 4. Analisi
-    log("   🧠 Analisi Intelligence (Gemini)...")
+    if mp3_path and os.path.exists(mp3_path):
+        print("   🎙️  Audio scaricato! Trascrivo con AssemblyAI...")
+        full_text = transcribe_with_assemblyai(mp3_path)
+        os.remove(mp3_path) # Pulizia
+    
+    # TENTATIVO 2: FALLBACK SOTTOTITOLI (Se audio bloccato)
+    if not full_text:
+        print("   ⚠️ Audio bloccato/fallito. Passo ai Sottotitoli YouTube...")
+        full_text = get_transcript_text(video['id'])
+
+    # TENTATIVO 3: DESCRIZIONE (Disperazione)
+    if not full_text:
+        print("   ⚠️ Sottotitoli assenti. Uso la Descrizione.")
+        full_text = f"{video['title']}\n{video['description']}"
+
+    # ANALISI E SALVATAGGIO
+    print("   🧠 Analisi Gemini...")
     analysis = analyze_with_gemini(full_text)
 
-    # 5. Salvataggio
-    try:
-        source_id = get_or_create_source(video['channel_title'], f"https://youtube.com/channel/{video['channel_id']}")
-        
-        payload = {
-            "source_id": source_id,
-            "title": video['title'],
-            "url": video['url'],
-            "published_at": video['published_at'].isoformat(),
-            "content": full_text,
-            "analysis": analysis,
-            "raw_metadata": {"video_id": video['id']}
-        }
-        
-        supabase.table("intelligence_feed").insert(payload).execute()
-        log("   💾 Salvato con successo nel DB.")
-        
-        # Pausa di sicurezza per API rate limits
-        time.sleep(5)
+    # Salva DB (Logica semplificata)
+    # ... (Il tuo codice di salvataggio Supabase qui) ...
+    # Assicurati di usare get_or_create_source e insert come nel tuo vecchio script
+    
+    # ESEMPIO RAPIDO SALVATAGGIO:
+    source_id = get_or_create_source_helper(video['channel_title'], video['channel_id'])
+    supabase.table("intelligence_feed").insert({
+        "source_id": source_id,
+        "title": video['title'],
+        "url": video['url'],
+        "published_at": video['published_at'].isoformat(),
+        "content": full_text,
+        "analysis": analysis,
+        "raw_metadata": {"video_id": video['id']}
+    }).execute()
+    print("   💾 Salvato.")
+    time.sleep(5)
 
-    except Exception as e:
-        log(f"❌ Errore salvataggio DB: {e}")
+# Helper funzioni rimaste uguali (get_channel_videos, etc...)
+# Inserisci qui le funzioni helper dal codice precedente (get_channel_videos_official, url_exists, ecc.)
+# Per brevità non le riscrivo tutte, ma SONO NECESSARIE.
+# Assicurati di includere: get_channel_videos_official, url_exists, get_or_create_source
+
+# --- AGGIUNGI QUI SOTTO LE FUNZIONI HELPER CHE AVEVI NEL CODICE PRECEDENTE ---
+def get_channel_videos_official(handle):
+    # ... (Copia dal codice precedente) ...
+    videos = []
+    try:
+        ch_res = youtube_service.channels().list(part="id,contentDetails,snippet", forHandle=handle).execute()
+        if not ch_res['items']: return []
+        uploads = ch_res['items'][0]['contentDetails']['relatedPlaylists']['uploads']
+        ch_title = ch_res['items'][0]['snippet']['title']
+        ch_id = ch_res['items'][0]['id']
+        pl_res = youtube_service.playlistItems().list(part="snippet", playlistId=uploads, maxResults=10).execute()
+        for item in pl_res.get('items', []):
+            s = item['snippet']
+            videos.append({
+                "id": s['resourceId']['videoId'],
+                "title": s['title'],
+                "description": s['description'],
+                "published_at": datetime.fromisoformat(s['publishedAt'].replace('Z', '+00:00')),
+                "url": f"https://www.youtube.com/watch?v={s['resourceId']['videoId']}",
+                "channel_title": ch_title, "channel_id": ch_id
+            })
+    except: pass
+    return videos
+
+def url_exists(url):
+    res = supabase.table("intelligence_feed").select("id").eq("url", url).execute()
+    return len(res.data) > 0
+
+def get_or_create_source_helper(name, ch_id):
+    res = supabase.table("sources").select("id").eq("name", name).execute()
+    if res.data: return res.data[0]['id']
+    new = supabase.table("sources").insert({"name": name, "type": "youtube", "base_url": f"https://youtube.com/channel/{ch_id}"}).execute()
+    return new.data[0]['id'] if new.data else None
 
 if __name__ == "__main__":
-    print(f"\n--- 🚀 WORKER STARTED | MODE: {MODE} ---\n")
-    
-    # Check preliminare FFmpeg
-    check_ffmpeg()
-
+    print(f"--- START (MODE={MODE}) ---")
     for handle in YOUTUBE_CHANNELS:
-        log(f"📡 Scansione: {handle}")
-        videos = get_channel_videos(handle)
-        
+        videos = get_channel_videos_official(handle)
         for video in videos:
-            # --- FILTRO DATE ---
-            v_date = video['published_at'].date()
-            if MODE == "BACKFILL":
-                if not (BACKFILL_START <= v_date <= BACKFILL_END):
-                    continue
-            else: # LIVE
-                today = datetime.now(timezone.utc).date()
-                if (today - v_date).days > 2: # Solo ultimi 2 giorni
-                    continue
-
-            # --- FILTRO DUPLICATI ---
-            # Decommentare per saltare video già processati
-            if url_exists(video['url']):
-               log(f"   ⏭️  Già nel DB: {video['title'][:30]}...")
-               continue
-            
-            # --- ESECUZIONE ---
-            process_single_video(video)
-
-    log("--- ✅ WORKER COMPLETED ---")
+            if url_exists(video['url']): continue
+            process_video(video)
