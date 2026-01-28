@@ -5,14 +5,11 @@ import requests
 import traceback
 from datetime import datetime
 
-# Importiamo la classe API e la classe di configurazione Proxy
+# Import
 from youtube_transcript_api import YouTubeTranscriptApi
 try:
-    # GenericProxyConfig si trova solitamente qui nella libreria installata
     from youtube_transcript_api.proxies import GenericProxyConfig
 except ImportError:
-    # Fallback se la struttura è diversa, ma con pip install standard è lì
-    print("⚠️ Attenzione: impossibile importare GenericProxyConfig da proxies.")
     from youtube_transcript_api import GenericProxyConfig
 
 from googleapiclient.discovery import build
@@ -21,6 +18,7 @@ from google.genai import types
 from supabase import create_client, Client
 
 # --- CONFIG ---
+print("🔧 INIT: Verifico variabili...")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -28,99 +26,98 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 if not SUPABASE_URL or not SUPABASE_KEY or not GOOGLE_API_KEY:
     raise ValueError("❌ Variabili mancanti.")
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-gemini_client = genai.Client(api_key=GOOGLE_API_KEY)
-youtube_service = build('youtube', 'v3', developerKey=GOOGLE_API_KEY)
+# Inizializzazione Client
+try:
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    gemini_client = genai.Client(api_key=GOOGLE_API_KEY)
+    youtube_service = build('youtube', 'v3', developerKey=GOOGLE_API_KEY)
+    print("✅ Client inizializzati.")
+except Exception as e:
+    print(f"❌ Errore Inizializzazione Client: {e}")
+    exit(1)
 
 YOUTUBE_CHANNELS = ["@InvestireBiz"]
 
-# --- FUNZIONE RECUPERO TESTO ---
-def get_transcript(video_id: str) -> str:
-    print(f"   🕵️  Scarico sottotitoli per {video_id} (Proxy SOCKS5h)...")
-    try:
-        # 1. CONFIGURAZIONE PROXY
-        # Usiamo GenericProxyConfig come definito nel codice che hai condiviso.
-        # 'socks5h' delega la risoluzione DNS al proxy (fondamentale per WARP)
-        proxy_url = "socks5h://127.0.0.1:40000"
-        
-        proxy_conf = GenericProxyConfig(
-            http_url=proxy_url,
-            https_url=proxy_url
-        )
+# --- FUNZIONI ---
 
-        # 2. ISTANZIA LA CLASSE
-        # Passiamo l'oggetto config al costruttore
+def get_transcript(video_id: str) -> str:
+    print(f"   🕵️  Scarico sottotitoli per {video_id}...")
+    try:
+        proxy_url = "socks5h://127.0.0.1:40000"
+        proxy_conf = GenericProxyConfig(http_url=proxy_url, https_url=proxy_url)
         ytt_api = YouTubeTranscriptApi(proxy_config=proxy_conf)
         
-        # 3. CHIAMA IL METODO D'ISTANZA .list()
         transcript_list = ytt_api.list(video_id)
-        
         transcript = None
         try:
-            # Cerca IT o EN
             transcript = transcript_list.find_transcript(['it', 'en'])
         except:
-            # Fallback: Traduci il primo disponibile
             try:
                 first = next(iter(transcript_list))
                 transcript = first.translate('it')
-            except:
-                pass
+            except: pass
 
         if transcript:
             data = transcript.fetch()
-            
-            # Parsing pulito
             parts = []
             for i in data:
-                if isinstance(i, dict):
-                    parts.append(i.get('text', ''))
-                elif hasattr(i, 'text'):
-                    parts.append(i.text)
+                if isinstance(i, dict): parts.append(i.get('text', ''))
+                elif hasattr(i, 'text'): parts.append(i.text)
             
             full_text = " ".join(parts)
             if full_text:
-                print("   ✅ Successo!")
+                print("   ✅ Successo Transcript!")
                 return full_text
-
     except Exception as e:
         print(f"   ⚠️ Errore Transcript: {e}")
-        # traceback.print_exc()
-        
     return ""
 
-# --- ANALISI ---
 def analyze_gemini(text: str) -> dict:
-    if not text or len(text) < 50: return {"summary": "N/A"}
-    
-    prompt = """
-    Analizza questo testo. JSON Output:
-    { "summary": "Riassunto", "countries_involved": [], "risk_level": "LOW", "key_takeaway": "..." }
-    """
+    if not text: return {"summary": "N/A"}
+    print("   🧠 Analisi Gemini in corso...")
     try:
         res = gemini_client.models.generate_content(
             model="gemini-2.0-flash",
-            contents=f"{prompt}\nTEXT:{text[:30000]}",
+            contents=f'Analizza JSON: {{ "summary": "...", "risk": "LOW" }}\nTEXT:{text[:15000]}',
             config=types.GenerateContentConfig(response_mime_type="application/json")
         )
         return json.loads(res.text.replace("```json","").replace("```","").strip())
-    except: return {}
+    except Exception as e: 
+        print(f"   ❌ Errore Gemini: {e}")
+        return {}
 
-# --- UTILS ---
 def get_source_id(name, ch_id):
+    print(f"   🔎 Cerco/Creo Source: {name}")
     try:
+        # Verifica esistenza
         res = supabase.table("sources").select("id").eq("name", name).execute()
-        if res.data: return str(res.data[0]['id'])
-        new = supabase.table("sources").insert({"name": name, "type": "yt", "base_url": ch_id}).execute()
-        return str(new.data[0]['id']) if new.data else None
-    except: return None
-
-def url_exists(url):
-    try:
-        return len(supabase.table("intelligence_feed").select("id").eq("url", url).execute().data) > 0
-    except: return False
+        if res.data: 
+            print(f"   ✅ Source trovata: {res.data[0]['id']}")
+            return str(res.data[0]['id'])
+        
+        # Creazione
+        print(f"   ➕ Creo nuova source...")
+        new = supabase.table("sources").insert({
+            "name": name, 
+            "type": "yt", 
+            "base_url": ch_id
+        }).execute()
+        
+        if new.data:
+            print(f"   ✅ Source creata: {new.data[0]['id']}")
+            return str(new.data[0]['id'])
+        else:
+            print(f"   ❌ Errore Creazione Source: Nessun dato ritornato. (Check RLS?)")
+            return None
+            
+    except Exception as e:
+        print(f"   ❌ ERRORE CRITICO get_source_id: {e}")
+        # Stampa dettagliata per capire se è colpa delle Permission
+        print(traceback.format_exc())
+        return None
 
 def get_channel_videos(handle):
+    # (Logica identica a prima, abbreviata per spazio)
     videos = []
     try:
         res = youtube_service.channels().list(part="contentDetails,snippet", forHandle=handle).execute()
@@ -128,7 +125,6 @@ def get_channel_videos(handle):
         upl = res['items'][0]['contentDetails']['relatedPlaylists']['uploads']
         ch_title = res['items'][0]['snippet']['title']
         ch_id = res['items'][0]['id']
-        
         pl = youtube_service.playlistItems().list(part="snippet", playlistId=upl, maxResults=5).execute()
         for i in pl.get('items', []):
             videos.append({
@@ -144,36 +140,41 @@ def get_channel_videos(handle):
 
 # --- MAIN ---
 if __name__ == "__main__":
-    print("--- 🚀 START WORKER (GENERIC PROXY CONFIG + INSTANCE) ---")
+    print("--- 🚀 START WORKER DEBUG ---")
     for handle in YOUTUBE_CHANNELS:
         for v in get_channel_videos(handle):
-            if url_exists(v['url']): continue
+            # Rimuovo controllo esistenza per forzare il test di inserimento
+            # if url_exists(v['url']): continue
             
-            print(f"🔄 {v['title'][:40]}...")
+            print(f"🔄 Processing: {v['title'][:30]}...")
             
-            # 1. TESTO
             text = get_transcript(v['id'])
-            method = "Transcript API"
+            if not text: text = "Descrizione fallback..."
             
-            # 2. FALLBACK
-            if not text:
-                print("   ⚠️ Sottotitoli assenti. Uso descrizione.")
-                text = f"{v['title']}\n{v['desc']}"
-                method = "Descrizione"
-            
-            # 3. SALVA
             analysis = analyze_gemini(text)
+            
+            # QUI È IL PUNTO CRITICO
             sid = get_source_id(v['ch_title'], v['ch_id'])
             
             if sid:
                 try:
-                    supabase.table("intelligence_feed").insert({
-                        "source_id": sid, "title": v['title'], "url": v['url'],
-                        "published_at": v['date'], "content": text, "analysis": analysis,
-                        "raw_metadata": {"vid": v['id'], "method": method}
-                    }).execute()
-                    print("   💾 Salvato.")
-                except: print("   ⏭️ Duplicato.")
+                    print("   💾 Tentativo inserimento intelligence_feed...")
+                    data = {
+                        "source_id": sid, 
+                        "title": v['title'], 
+                        "url": v['url'],
+                        "published_at": v['date'], 
+                        "content": text[:5000], # Taglio per sicurezza
+                        "analysis": analysis,
+                        "raw_metadata": {"vid": v['id']}
+                    }
+                    res = supabase.table("intelligence_feed").insert(data).execute()
+                    print(f"   ✅ Salvataggio riuscito! Dati: {len(res.data)}")
+                except Exception as e:
+                    print(f"   ❌ ERRORE INSERIMENTO FINALE: {e}")
+                    print(traceback.format_exc())
+            else:
+                print("   ❌ SALVATAGGIO SALTATO: Source ID nullo.")
             
             time.sleep(1)
     print("--- END ---")
