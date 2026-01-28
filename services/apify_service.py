@@ -11,7 +11,7 @@ class ApifyService:
         print(f"   ☁️ [APIFY] Richiesta per: {video_url}")
         
         try:
-            run = self.client.actor(Config.APIFY_ACTOR_ID).call(run_input={"videoUrls": [video_url]})
+            run = self.client.actor(Config.APIFY_ACTOR_ID).call(run_input={"videoids": [video_url]})
             if not run: return ""
             
             full_text = []
