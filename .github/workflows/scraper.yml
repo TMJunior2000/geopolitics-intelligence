@@ -2,8 +2,8 @@ name: Geopolitics Scraper
 
 on:
   schedule:
-    - cron: '0 * * * *'   # Esegue ogni ora
-  workflow_dispatch:      # Permette avvio manuale con pulsante
+    - cron: '0 * * * *'
+  workflow_dispatch:
     inputs:
       mode:
         description: "Execution mode (LIVE or BACKFILL)"
@@ -23,12 +23,18 @@ jobs:
         with:
           python-version: "3.11"
 
+      # ✅ 1. INSTALLA DENO (Motore JS per yt-dlp)
+      - name: Install Deno (yt-dlp JS runtime)
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      # ✅ 2. INSTALLA FFMPEG (Essenziale per audio)
       - name: Install FFmpeg
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
-      # Installiamo le dipendenze direttamente qui per sicurezza
       - name: Install dependencies
         run: |
           pip install --upgrade pip
@@ -36,11 +42,12 @@ jobs:
 
       - name: Run worker
         env:
-          # Logica: Se avviato manualmente usa l'input, altrimenti (cron) usa 'LIVE'
           MODE: ${{ inputs.mode || 'LIVE' }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           ASSEMBLYAI_KEY: ${{ secrets.ASSEMBLYAI_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          # ✅ 3. PASSA I COOKIES (Vedi istruzioni sotto)
+          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }} 
         run: |
           python worker.py

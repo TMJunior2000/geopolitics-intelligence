@@ -95,7 +95,7 @@ def get_or_create_source(name: str, url: str) -> str:
 # =========================
 
 def download_audio_mp3(video_url: str) -> Optional[str]:
-    """Scarica audio da YT e converte in MP3."""
+    """Scarica audio da YT usando Cookies e User Agent robusti."""
     temp_dir = "temp_audio"
     if not os.path.exists(temp_dir):
         os.makedirs(temp_dir)
@@ -103,7 +103,15 @@ def download_audio_mp3(video_url: str) -> Optional[str]:
     unique_name = f"audio_{uuid.uuid4()}"
     output_path_no_ext = os.path.join(temp_dir, unique_name)
     
-    # Configurazione YT-DLP
+    # --- GESTIONE COOKIES ---
+    # Creiamo un file cookies temporaneo se la variabile d'ambiente esiste
+    cookies_path = None
+    env_cookies = os.getenv("YOUTUBE_COOKIES")
+    if env_cookies:
+        cookies_path = "cookies.txt"
+        with open(cookies_path, "w") as f:
+            f.write(env_cookies)
+    
     ydl_opts = {
         'format': 'bestaudio/best',
         'postprocessors': [{
@@ -111,22 +119,37 @@ def download_audio_mp3(video_url: str) -> Optional[str]:
             'preferredcodec': 'mp3',
             'preferredquality': '192',
         }],
-        'outtmpl': output_path_no_ext, # yt-dlp aggiungerà .mp3
+        'outtmpl': output_path_no_ext,
         'quiet': True,
         'noplaylist': True,
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        # Opzioni Anti-Blocco
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'nocheckcertificate': True,
+        'ignoreerrors': True,
     }
+
+    # Se abbiamo i cookies, usiamoli!
+    if cookies_path:
+        ydl_opts['cookiefile'] = cookies_path
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([video_url])
         
+        # Pulizia file cookies per sicurezza
+        if cookies_path and os.path.exists(cookies_path):
+            os.remove(cookies_path)
+
         final_path = output_path_no_ext + ".mp3"
         if os.path.exists(final_path):
             return final_path
         return None
+
     except Exception as e:
         log(f"❌ Errore Download yt-dlp: {e}")
+        # Pulizia anche in caso di errore
+        if cookies_path and os.path.exists(cookies_path):
+            os.remove(cookies_path)
         return None
 
 def transcribe_with_assemblyai(file_path: str) -> str:
