@@ -4,20 +4,21 @@ import time
 import requests
 import datetime as dt
 from datetime import datetime
-from typing import Optional, Dict, Any
 
+# Usiamo la libreria ufficiale (ora funzionerà grazie alla VPN)
+from youtube_transcript_api import YouTubeTranscriptApi
 from googleapiclient.discovery import build
 from google import genai
 from google.genai import types
 from supabase import create_client, Client
 
-# --- CONFIGURAZIONE ---
+# --- CONFIG ---
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY or not GOOGLE_API_KEY:
-    raise ValueError("❌ ERRORE: Variabili mancanti.")
+    raise ValueError("❌ Variabili mancanti.")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 gemini_client = genai.Client(api_key=GOOGLE_API_KEY)
@@ -25,73 +26,41 @@ youtube_service = build('youtube', 'v3', developerKey=GOOGLE_API_KEY)
 
 YOUTUBE_CHANNELS = ["@InvestireBiz"]
 
-# --- FUNZIONE RECUPERO TESTO (STRATEGIA INVIDIOUS) ---
-def get_transcript_via_invidious(video_id: str) -> str:
-    """Scarica sottotitoli usando una rotazione di server Invidious."""
-    instances = [
-        "https://inv.tux.pizza",
-        "https://invidious.drgns.space",
-        "https://vid.puffyan.us",
-        "https://inv.zzls.xyz",
-        "https://yt.artemislena.eu"
-    ]
-    
-    print("   🕵️  Cerco sottotitoli su Invidious...")
-    
-    for instance in instances:
+# --- FUNZIONE RECUPERO TESTO (API UFFICIALE SOTTO VPN) ---
+def get_transcript(video_id: str) -> str:
+    print("   Trying Official Transcript API (via WARP VPN)...")
+    try:
+        # Recupera la lista dei sottotitoli
+        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        
         try:
-            # Chiede metadati sottotitoli
-            url = f"{instance}/api/v1/captions/{video_id}"
-            res = requests.get(url, timeout=5)
-            if res.status_code != 200: continue
+            # Cerca manuale o autogenerato in Italiano o Inglese
+            transcript = transcript_list.find_transcript(['it', 'en'])
+        except:
+            # Se c'è in altra lingua (es. russo/cinese), traducilo in ITA
+            transcript = next(iter(transcript_list)).translate('it')
             
-            captions = res.json()
-            if not captions or not isinstance(captions, list): continue
-
-            # Cerca Italiano > Inglese > Primo disponibile
-            target = None
-            for c in captions:
-                if c.get('language') == 'Italian' or c.get('code') == 'it':
-                    target = c; break
+        data = transcript.fetch()
+        
+        # Unisce il testo
+        full_text = " ".join([i['text'] for i in data])
+        
+        if full_text:
+            print("   ✅ Successo!")
+            return full_text
             
-            # Se non trova italiano, cerca inglese
-            if not target:
-                for c in captions:
-                    if 'en' in c.get('code', ''): target = c; break
-            
-            # Se nemmeno inglese, prendi il primo
-            if not target: target = captions[0]
-
-            # Scarica il testo vero e proprio
-            full_url = f"{instance}{target['url']}"
-            text_res = requests.get(full_url, timeout=5)
-            
-            if text_res.status_code == 200:
-                # Pulizia VTT (rimuove timestamp e header)
-                lines = [l.strip() for l in text_res.text.splitlines() 
-                         if "-->" not in l and l.strip() and not l.startswith(("WEBVTT", "NOTE"))]
-                
-                # Rimuove duplicati consecutivi
-                clean_text = []
-                for l in lines:
-                    if not clean_text or clean_text[-1] != l:
-                        clean_text.append(l)
-                
-                print(f"   ✅ Trovati su: {instance}")
-                return " ".join(clean_text)
-
-        except Exception:
-            continue
-            
+    except Exception as e:
+        print(f"   ⚠️ Errore API: {e}")
+        return ""
+    
     return ""
 
-# --- ANALISI AI ---
+# --- ANALISI ---
 def analyze_gemini(text: str) -> dict:
-    if not text or len(text) < 50: 
-        return {"summary": "N/A", "risk_level": "LOW", "countries_involved": []}
+    if not text or len(text) < 50: return {"summary": "N/A"}
     
     prompt = """
-    Analizza il testo. Output JSON ESCLUSIVO:
+    Analizza questo testo. JSON Output:
     { "summary": "Riassunto", "countries_involved": [], "risk_level": "LOW", "key_takeaway": "..." }
     """
     try:
@@ -120,11 +89,11 @@ def url_exists(url):
 def get_channel_videos(handle):
     videos = []
     try:
-        ch_res = youtube_service.channels().list(part="id,contentDetails,snippet", forHandle=handle).execute()
-        if not ch_res.get('items'): return []
-        upl = ch_res['items'][0]['contentDetails']['relatedPlaylists']['uploads']
-        ch_title = ch_res['items'][0]['snippet']['title']
-        ch_id = ch_res['items'][0]['id']
+        res = youtube_service.channels().list(part="contentDetails,snippet", forHandle=handle).execute()
+        if not res.get('items'): return []
+        upl = res['items'][0]['contentDetails']['relatedPlaylists']['uploads']
+        ch_title = res['items'][0]['snippet']['title']
+        ch_id = res['items'][0]['id']
         
         pl = youtube_service.playlistItems().list(part="snippet", playlistId=upl, maxResults=5).execute()
         for i in pl.get('items', []):
@@ -141,24 +110,24 @@ def get_channel_videos(handle):
 
 # --- MAIN ---
 if __name__ == "__main__":
-    print("--- 🚀 START WORKER (INVIDIOUS MODE) ---")
+    print("--- 🚀 START WORKER (VPN MODE) ---")
     for handle in YOUTUBE_CHANNELS:
         for v in get_channel_videos(handle):
             if url_exists(v['url']): continue
             
             print(f"🔄 {v['title'][:40]}...")
             
-            # 1. TENTA INVIDIOUS (Sottotitoli)
-            text = get_transcript_via_invidious(v['id'])
-            method = "Invidious"
+            # 1. RECUPERO TESTO
+            text = get_transcript(v['id'])
+            method = "Transcript API"
             
-            # 2. FALLBACK DESCRIZIONE
+            # 2. FALLBACK
             if not text:
-                print("   ⚠️ Sottotitoli non trovati. Uso descrizione.")
+                print("   ⚠️ Sottotitoli assenti. Uso descrizione.")
                 text = f"{v['title']}\n{v['desc']}"
                 method = "Descrizione"
             
-            # 3. ANALISI & SALVATAGGIO
+            # 3. ANALISI & SAVE
             analysis = analyze_gemini(text)
             sid = get_source_id(v['ch_title'], v['ch_id'])
             
@@ -170,9 +139,7 @@ if __name__ == "__main__":
                         "raw_metadata": {"vid": v['id'], "method": method}
                     }).execute()
                     print("   💾 Salvato.")
-                except Exception as e:
-                    if "duplicate" in str(e): print("   ⏭️ Duplicato.")
-                    else: print(f"   ❌ Errore DB: {e}")
+                except: print("   ⏭️ Duplicato.")
             
-            time.sleep(2)
+            time.sleep(1)
     print("--- END ---")

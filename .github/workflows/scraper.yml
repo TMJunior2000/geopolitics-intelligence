@@ -2,12 +2,10 @@ name: Geopolitics Scraper
 
 on:
   schedule:
-    - cron: '0 * * * *'   # Esegue ogni ora
-  workflow_dispatch:      # Permette avvio manuale
+    - cron: '0 * * * *'
+  workflow_dispatch:
     inputs:
       mode:
-        description: "Execution mode"
-        required: true
         default: "BACKFILL"
 
 jobs:
@@ -18,6 +16,13 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      # --- 🛡️ LA SOLUZIONE AL BLOCCO: CLOUDFLARE WARP VPN ---
+      # Questo cambia l'IP di GitHub e ci permette di accedere a YouTube
+      - name: Setup WARP
+        uses: fscarmen/warp-on-actions@v1.3
+        with:
+          stack: dual
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -26,16 +31,12 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          # Installiamo SOLO le librerie leggere per Invidious e DB
-          # Niente più FFmpeg, yt-dlp o AssemblyAI
-          pip install requests google-api-python-client google-genai supabase
+          # Ora che abbiamo la VPN, usiamo la libreria ufficiale che è la più affidabile
+          pip install youtube-transcript-api requests google-api-python-client google-genai supabase pandas
 
       - name: Run worker
         env:
-          # Mappiamo i segreti
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          # ASSEMBLYAI_KEY e COOKIES non servono più
-        run: |
-          python worker.py
+        run: python worker.py
