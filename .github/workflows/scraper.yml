@@ -2,10 +2,12 @@ name: Geopolitics Scraper
 
 on:
   schedule:
-    - cron: '0 * * * *'
-  workflow_dispatch:
+    - cron: '0 * * * *'   # Esegue ogni ora
+  workflow_dispatch:      # Permette avvio manuale
     inputs:
       mode:
+        description: "Execution mode"
+        required: true
         default: "BACKFILL"
 
 jobs:
@@ -24,14 +26,16 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          # Niente yt-dlp, usiamo API esterne!
-          pip install requests assemblyai google-api-python-client google-genai supabase pandas
+          # Installiamo SOLO le librerie leggere per Invidious e DB
+          # Niente più FFmpeg, yt-dlp o AssemblyAI
+          pip install requests google-api-python-client google-genai supabase
 
       - name: Run worker
         env:
-          MODE: ${{ inputs.mode || 'LIVE' }}
+          # Mappiamo i segreti
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          ASSEMBLYAI_KEY: ${{ secrets.ASSEMBLYAI_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-        run: python worker.py
+          # ASSEMBLYAI_KEY e COOKIES non servono più
+        run: |
+          python worker.py
