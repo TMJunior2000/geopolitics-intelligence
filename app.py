@@ -12,26 +12,93 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- 1. CSS BLINDATO ---
-GLOBAL_CSS = """
+# ==============================================================================
+# 1. CSS PER L'INTERFACCIA STREAMLIT (FILTRI E BOTTONI)
+# Questo CSS agisce sugli elementi nativi di Streamlit (fuori dall'iframe delle card)
+# ==============================================================================
+st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
 
-    /* BASE */
-    html, body, [class*="css"] {
-        font-family: 'Inter', sans-serif;
+    /* BASE BACKGROUND APP */
+    .stApp {
         background: #0E1117; 
+    }
+
+    /* HEADER */
+    h1, h2, h3, p, div {
+        font-family: 'Inter', sans-serif;
         color: #FAFAFA;
     }
 
-    /* CARD CONTAINER */
+    /* --- FIX BOTTONI FILTRO (DIMENSIONI IDENTICHE) --- */
+    div[data-testid="column"] button {
+        width: 100% !important;        /* Occupa tutta la larghezza della colonna */
+        height: 50px !important;       /* Altezza fissa */
+        min-height: 50px !important;
+        max-height: 50px !important;
+        border-radius: 12px !important;
+        font-family: 'Space Grotesk', sans-serif !important;
+        font-weight: 700 !important;
+        font-size: 14px !important;
+        border: none !important;
+        transition: transform 0.2s !important;
+        white-space: nowrap !important; /* Evita che il testo vada a capo */
+        overflow: hidden !important;    /* Taglia testo troppo lungo */
+        text-overflow: ellipsis !important; /* Mette i puntini ... */
+    }
+
+    /* Stile Bottone Selezionato (Primary) */
+    div[data-testid="column"] button[kind="primary"] {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        color: white !important;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4) !important;
+        border: none !important;
+    }
+
+    /* Stile Bottone Non Selezionato (Secondary) */
+    div[data-testid="column"] button[kind="secondary"] {
+        background: #1E232F !important; 
+        color: #A0AEC0 !important;
+        border: 1px solid #2D3748 !important;
+    }
+    div[data-testid="column"] button[kind="secondary"]:hover {
+        border-color: #667eea !important;
+        color: #667eea !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+
+# ==============================================================================
+# 2. CSS PER LE CARD (INTERNO ALL'IFRAME)
+# Ho ridotto l'altezza a 360px per rimuovere il "buco bianco"
+# ==============================================================================
+CARD_CSS = """
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+    /* BASE IFRAME */
+    html, body {
+        font-family: 'Inter', sans-serif;
+        background: #0E1117; /* Deve combaciare con lo sfondo app */
+        color: #FAFAFA;
+        margin: 0;
+        padding: 0;
+        overflow-x: hidden; /* Evita scroll orizzontale */
+    }
+
+    /* CARD CONTAINER - ALTEZZA RIDOTTA */
     .modern-card {
         background: #FFFFFF;
         border-radius: 20px;
         padding: 24px;
         margin-bottom: 24px;
         box-shadow: 0 10px 25px rgba(0,0,0,0.15);
-        height: 520px !important;
+        
+        /* ALTEZZA RIDOTTA: Da 520px a 360px per togliere lo spazio vuoto */
+        height: 360px !important; 
+        
         display: flex !important;
         flex-direction: column !important;
         justify-content: flex-start !important;
@@ -39,10 +106,11 @@ GLOBAL_CSS = """
         overflow: hidden;
         border: 2px solid transparent; 
         transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        box-sizing: border-box; /* Importante per padding */
     }
 
     .modern-card:hover {
-        transform: translateY(-10px);
+        transform: translateY(-8px);
         box-shadow: 0 20px 40px rgba(0,0,0,0.3);
         border-color: #667eea;
         z-index: 10;
@@ -60,12 +128,13 @@ GLOBAL_CSS = """
 
     /* TAG SECTION */
     .tag-container {
-        height: 40px !important;
+        height: 30px !important;
         display: flex;
         align-items: center;
+        margin-bottom: 10px;
     }
     .pill-tag {
-        padding: 5px 12px;
+        padding: 4px 12px;
         border-radius: 50px;
         font-size: 11px;
         font-weight: 800;
@@ -80,13 +149,13 @@ GLOBAL_CSS = """
     /* TITOLO */
     .card-title {
         font-family: 'Space Grotesk', sans-serif;
-        font-size: 20px;
+        font-size: 18px;
         line-height: 1.3;
         color: #1A1A2E;
         font-weight: 700;
-        margin-bottom: 15px;
-        height: 54px !important; 
-        min-height: 54px !important;
+        margin-bottom: 10px;
+        height: 48px !important; /* Spazio per 2 righe */
+        min-height: 48px !important;
         overflow: hidden;
         display: -webkit-box;
         -webkit-line-clamp: 2;
@@ -97,14 +166,14 @@ GLOBAL_CSS = """
     .card-text {
         font-size: 14px;
         color: #4A5568;
-        line-height: 1.6;
-        height: 115px !important; 
-        min-height: 115px !important;
+        line-height: 1.5;
+        height: 85px !important; /* Ridotto per card più compatta */
+        min-height: 85px !important;
         overflow: hidden;
         display: -webkit-box;
-        -webkit-line-clamp: 5;
+        -webkit-line-clamp: 4;
         -webkit-box-orient: vertical;
-        margin-bottom: 20px;
+        margin-bottom: 15px;
     }
 
     /* FOOTER */
@@ -122,7 +191,7 @@ GLOBAL_CSS = """
         font-size: 12px;
         color: #718096;
         font-weight: 600;
-        margin-bottom: 15px;
+        margin-bottom: 10px;
         height: 20px;
     }
     
@@ -130,7 +199,7 @@ GLOBAL_CSS = """
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        max-width: 150px;
+        max-width: 140px;
     }
 
     /* CTA BUTTON STYLE */
@@ -139,23 +208,22 @@ GLOBAL_CSS = """
         align-items: center;
         justify-content: center;
         width: 100%;
-        height: 48px !important;
-        border-radius: 12px;
+        height: 42px !important;
+        border-radius: 10px;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white !important;
         font-weight: 700;
         font-family: 'Space Grotesk', sans-serif;
         text-transform: uppercase;
-        font-size: 13px;
+        font-size: 12px;
         text-decoration: none !important;
         transition: transform 0.2s;
-        box-shadow: 0 4px 6px rgba(50, 50, 93, 0.11), 0 1px 3px rgba(0, 0, 0, 0.08);
+        box-shadow: 0 4px 6px rgba(50, 50, 93, 0.11);
         border: none;
         cursor: pointer;
     }
     a.cta-button:hover {
         transform: scale(1.02);
-        box-shadow: 0 7px 14px rgba(50, 50, 93, 0.1), 0 3px 6px rgba(0, 0, 0, 0.08);
         color: white !important;
     }
 
@@ -163,49 +231,43 @@ GLOBAL_CSS = """
     .cards-grid {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
-        gap: 24px;
-        margin-bottom: 40px;
+        gap: 20px;
+        padding-bottom: 20px;
     }
 
     /* ASSET HEADER */
     .asset-header {
         font-family: 'Space Grotesk', sans-serif;
-        font-size: 32px;
+        font-size: 28px;
         font-weight: 700;
         color: #FAFAFA;
-        margin-top: 40px;
-        margin-bottom: 24px;
+        margin-top: 30px;
+        margin-bottom: 20px;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+        padding-bottom: 10px;
     }
 </style>
 """
 
-st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
-
-# --- 2. LOGICA DATI ---
+# --- LOGICA DATI ---
 db = DBService()
 
 @st.cache_data(ttl=300)
 def load_data():
     try:
         raw_data = db.get_all_insights_dataframe()
-        if not raw_data: 
-            return pd.DataFrame()
+        if not raw_data: return pd.DataFrame()
         df = pd.DataFrame(raw_data)
         if 'published_at' in df.columns:
             df['published_at'] = pd.to_datetime(df['published_at'])
             df = df.sort_values(by='published_at', ascending=False)
         return df
-    except: 
-        return pd.DataFrame()
+    except: return pd.DataFrame()
 
 df = load_data()
 
-# --- 3. FUNZIONE PER GENERARE CARD HTML ---
+# --- FUNZIONE GENERAZIONE HTML ---
 def generate_card_html(row):
-    """
-    Genera l'HTML completo di una singola card
-    """
-    # Preparazione Dati
     sid = row.get('source_id', 0)
     source_class = f"source-{sid}" if sid in [1, 2] else "source-default"
     
@@ -213,18 +275,16 @@ def generate_card_html(row):
     tag_class = "tag-bullish" if sent == "BULLISH" else "tag-bearish" if sent == "BEARISH" else "tag-neutral"
     sent_icon = "🚀" if sent == "BULLISH" else "📉" if sent == "BEARISH" else "⚖️"
     
-    # Escape HTML per sicurezza
     title = html.escape(str(row.get('video_title', 'No Title')))
     reasoning = html.escape(str(row.get('ai_reasoning', 'No reasoning available.')))
     source_name = html.escape(str(row.get('video_title', '')).split(':')[0][:20])
     date_str = row['published_at'].strftime('%d %b %Y') if 'published_at' in row and pd.notna(row['published_at']) else "N/A"
     
     url = row.get('video_url', '#')
-    if not url or url == 'nan':
-        url = "#"
+    if not url or url == 'nan': url = "#"
     
-    # HTML della card
-    card_html = f"""
+    # HTML SENZA SPAZI EXTRA
+    return f"""
     <div class="modern-card {source_class}">
         <div class="tag-container">
             <span class="pill-tag {tag_class}">{sent_icon} {sent}</span>
@@ -242,41 +302,23 @@ def generate_card_html(row):
         </div>
     </div>
     """
-    return card_html
-
 
 def generate_all_cards_html(df, assets_to_show):
-    """
-    Genera l'HTML completo per tutti gli asset e le loro card
-    Questo approccio senior permette un rendering più efficiente e controllato
-    """
     all_html_parts = []
-    
     for asset in assets_to_show:
         asset_df = df[df['asset_ticker'] == asset]
-        if asset_df.empty:
-            continue
+        if asset_df.empty: continue
         
-        # Header dell'asset
         all_html_parts.append(f'<div class="asset-header">💎 {html.escape(asset)}</div>')
-        
-        # Apertura grid
         all_html_parts.append('<div class="cards-grid">')
-        
-        # Genera tutte le card per questo asset
         for _, row in asset_df.iterrows():
-            card_html = generate_card_html(row)
-            all_html_parts.append(card_html)
-        
-        # Chiusura grid
+            all_html_parts.append(generate_card_html(row))
         all_html_parts.append('</div>')
-    
     return ''.join(all_html_parts)
 
-
-# --- HEADER ---
+# --- HEADER APP ---
 st.markdown("""
-<div style="text-align:center; padding: 40px 0;">
+<div style="text-align:center; padding: 30px 0;">
     <h1 style="font-family:'Space Grotesk'; font-size:48px; margin:0; color:#FAFAFA;">Trading Intelligence</h1>
     <p style="color:#888; text-transform:uppercase; letter-spacing:2px; font-weight:600;">🚀 Market Analysis Dashboard</p>
 </div>
@@ -294,6 +336,7 @@ all_assets = ["SHOW ALL"] + unique_assets
 if 'selected_filter' not in st.session_state:
     st.session_state.selected_filter = "SHOW ALL"
 
+# Gestione righe bottoni
 cols = st.columns(8)
 for i, asset in enumerate(all_assets):
     col_idx = i % 8
@@ -302,24 +345,23 @@ for i, asset in enumerate(all_assets):
     with cols[col_idx]:
         btn_type = "primary" if st.session_state.selected_filter == asset else "secondary"
         label = "🌐 ALL" if asset == "SHOW ALL" else asset
+        # Nota: il CSS esterno ora forza questi bottoni ad avere la stessa dimensione
         if st.button(label, key=f"btn_{asset}", type=btn_type, use_container_width=True):
             st.session_state.selected_filter = asset
             st.rerun()
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# --- RENDER CARDS (APPROCCIO SENIOR) ---
+# --- RENDER IFRAME ---
 assets_to_show = unique_assets if st.session_state.selected_filter == "SHOW ALL" else [st.session_state.selected_filter]
-
-# Genera tutto l'HTML in una volta
 all_cards_html = generate_all_cards_html(df, assets_to_show)
 
-# Calcola altezza dinamica basata sul numero di card
+# Calcolo altezza dinamica (aggiornato per card più corte)
 total_cards = sum(len(df[df['asset_ticker'] == asset]) for asset in assets_to_show)
-rows = (total_cards + 2) // 3  # Arrotonda per eccesso
-height = max(600, rows * 580)  # 580px per riga (card + margini)
+rows = (total_cards + 2) // 3 
+# Altezza stimata: 360px card + 20px gap + header asset circa 60px
+iframe_height = max(500, rows * 420) 
 
-# Rendering con st.components - QUESTO È IL METODO SENIOR
 components.html(
     f"""
     <!DOCTYPE html>
@@ -327,18 +369,18 @@ components.html(
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        {GLOBAL_CSS}
+        {CARD_CSS}
     </head>
-    <body style="background: #0E1117; padding: 20px; margin: 0;">
+    <body style="background: #0E1117; padding: 10px; margin: 0;">
         {all_cards_html}
     </body>
     </html>
     """,
-    height=height,
+    height=iframe_height,
     scrolling=False
 )
 
-# REFRESH BUTTON
+# REFRESH
 st.markdown("<br><br>", unsafe_allow_html=True)
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
