@@ -1,4 +1,4 @@
-name: Geopolitics Scraper (Production)
+name: Trading Intelligence Worker
 
 on:
   schedule:
@@ -40,9 +40,11 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          # Mappiamo il segreto di GitHub (API_APIFY) nella variabile attesa da Config (APIFY_TOKEN)
           APIFY_TOKEN: ${{ secrets.API_APIFY }}
-          # QUI AVVIENE LA MAGIA:
-          # Se il workflow è manuale, usa l'input scelto.
-          # Se è automatico (cron), 'inputs.mode' è vuoto, quindi usa 'LIVE'.
+          
+          # Se il workflow è manuale, usa l'input scelto. Altrimenti 'LIVE'.
           WORKER_MODE: ${{ inputs.mode || 'LIVE' }} 
-        run: python worker.py
+        
+        # AGGIORNATO: Punta al nuovo entry point principale
+        run: python main_worker.py
