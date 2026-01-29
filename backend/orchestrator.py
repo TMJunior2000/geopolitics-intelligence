@@ -45,4 +45,4 @@ def run_pipeline(mode: str):
             
             # Pausa per evitare rate limit aggressivi
             print("      ⏳ Attesa per rispetto quote Gemini (2s)...")
-            time.sleep(2)
+            time.sleep(30)

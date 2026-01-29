@@ -66,8 +66,8 @@ class AIService:
         """
 
         # --- LOGICA DI RETRY (Exponential Backoff) ---
-        max_retries = 3
-        wait_time = 10 
+        max_retries = 5
+        wait_time = 60 
 
         for attempt in range(max_retries):
             try:
@@ -92,7 +92,7 @@ class AIService:
                 print(f"      ⚠️ Errore AI (Tentativo {attempt+1}): {e}")
                 if "429" in str(e): # Rate limit
                     time.sleep(wait_time)
-                    wait_time *= 2
+                    wait_time += 30
                 else:
                     break
         
