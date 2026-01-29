@@ -81,3 +81,52 @@ class DBService:
             .select("*").eq("status", "PENDING").execute()
             
         return insights.data, signals.data
+    
+    def get_all_insights_dataframe(self) -> List[Dict[str, Any]]:
+        """
+        Scarica TUTTI gli insights facendo una JOIN con la tabella intelligence_feed
+        per ottenere titolo, data e url del video originale.
+        Serve per alimentare la Dashboard Streamlit.
+        """
+        try:
+            # JOIN: Selezioniamo tutto da market_insights E i campi utili da intelligence_feed
+            # La sintassi intelligence_feed(...) è specifica di PostgREST (usato da Supabase)
+            response = self.client.table("market_insights")\
+                .select("*, intelligence_feed(title, published_at, url, source_id)")\
+                .order("created_at", desc=True)\
+                .execute()
+            
+            data = response.data
+            
+            if not data:
+                return []
+
+            # FLATTENING: Supabase restituisce oggetti annidati tipo:
+            # { "asset": "GOLD", "intelligence_feed": { "title": "Video Oro" } }
+            # Pandas preferisce tutto piatto. Lo sistemiamo qui.
+            flat_data = []
+            for item in data:
+                # Ensure item is a dict before flattening
+                if not isinstance(item, dict):
+                    continue
+                feed = item.pop('intelligence_feed', {}) or {}  # Estrae e rimuove il dict annidato
+
+                # Aggiunge i campi del video al livello principale
+                if isinstance(feed, dict):
+                    item['video_title'] = feed.get('title', 'Unknown Title')
+                    item['published_at'] = feed.get('published_at')
+                    item['video_url'] = feed.get('url')
+                    item['source_id'] = feed.get('source_id')
+                else:
+                    item['video_title'] = 'Unknown Title'
+                    item['published_at'] = None
+                    item['video_url'] = None
+                    item['source_id'] = None
+
+                flat_data.append(item)
+                
+            return flat_data
+
+        except Exception as e:
+            print(f"❌ Errore Fetch Dashboard: {e}")
+            return []
