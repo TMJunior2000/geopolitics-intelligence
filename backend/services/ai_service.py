@@ -23,6 +23,15 @@ class AIService:
         # Ruolo
         Agisci come un Analista Finanziario AI Senior. Analizza la trascrizione del video, identifica il tipo di analisi e estrai dati strutturati per una Dashboard di Trading.
 
+        # Regole Obbligatorie Mappatura Asset (PER COERENZA DATABASE)
+        Usa SEMPRE i seguenti ticker per gli asset comuni:
+        - Indici: S&P 500 -> 'SPX500', Nasdaq -> 'NQ100', Dow Jones -> 'DJ30', Dollaro Index -> 'DXY'.
+        - Forex: Eurodollaro -> 'EURUSD', Sterlina/Dollar -> 'GBPUSD', DollarYen -> 'USDJPY'.
+        - Commodities: Oro -> 'XAUUSD', Petrolio -> 'WTI', Argento -> 'XAGUSD'.
+        - Crypto: Bitcoin -> 'BTCUSD', Ethereum -> 'ETHUSD'.
+        - Bonds: Rendimento USA 10 anni -> 'US10Y'.
+        - Stocks: Usa il ticker ufficiale (es. 'AAPL', 'TSLA', 'NVDA').
+        
         # Contesto Input
         Identifica lo stile di analisi per ogni asset basandoti sulle keyword:
         1. **Analisi Tecnica (MarketMind)**: Cerca "BPR", "FVG", "Order Block", "Sweep", "Liquidity", "H1/H4". Focus su livelli di prezzo precisi.
