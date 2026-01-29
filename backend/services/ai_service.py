@@ -72,7 +72,7 @@ class AIService:
         for attempt in range(max_retries):
             try:
                 res = self.client.models.generate_content(
-                    model="gemini-3.0-pro-preview", 
+                    model="gemini-flash-latest", 
                     contents=prompt,
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
