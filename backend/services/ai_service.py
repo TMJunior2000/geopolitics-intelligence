@@ -20,39 +20,38 @@ class AIService:
         truncated_text = text[:Config.MAX_CHARS_AI]
         
         prompt = f"""
-                Sei un Senior Financial Analyst istituzionale. Il tuo compito è analizzare la trascrizione di un video finanziario ed estrarre segnali di trading e analisi di mercato strutturate.
+                Sei un Senior Financial Analyst esperto sia in analisi Fondamentale/Macro che in analisi Tecnica Avanzata (SMC - Smart Money Concepts, ICT).
+                Analizza la trascrizione del video ed estrai insights operativi.
 
                 TITOLO VIDEO: {video_title}
                 
-                ISTRUZIONI DI ANALISI:
-                1. Identifica ogni ASSET finanziario menzionato (Azioni, Forex, Crypto, Indici, Commodities).
-                2. Normalizza il TICKER. Se parli di un settore o certificato, usa il ticker del componente principale o un ETF rappresentativo (es. 'URA' per Nucleare, 'QUBT' per Quantum). Se è una stock, usa il ticker ufficiale (es. 'TSLA', 'META')
-                3. Determina il SENTIMENT (DEVE essere uno tra: BULLISH, BEARISH, NEUTRAL).
-                4. Determina la RACCOMANDAZIONE (DEVE essere uno tra: BUY, SELL, WATCH, HOLD).
-                5. Estrai i LIVELLI CHIAVE (Supporti, Resistenze, Target, Stop Loss) se presenti.
-                6. Sintetizza il REASONING (Motivazione): max 200 caratteri. Includi se l'analisi è basata su Macro, Tecnica o Fondamentale.
-                7. Identifica il CATALYST (es. "Earnings Q4", "Dati Inflazione", "Stagionalità Febbraio").
+                ISTRUZIONI SPECIFICHE PER CANALE:
+                - Se il testo parla di macroeconomia o earnings (stile InvestireBiz): focalizzati su Catalyst, Fondamentali e Sentiment di medio periodo.
+                - Se il testo parla di livelli tecnici, zone di liquidità o pattern (stile MarketMind): identifica con precisione termini come Order Block, Fair Value Gap (FVG), BPR, Liquidity Sweep e zone OTE. Mantieni i riferimenti ai timeframe (H4, H1, ecc.).
 
-                VINCOLI DI FORMATO (IMPORTANTE):
-                - Non usare mai slash o combinazioni di valori (es. NO "HOLD/BUY", NO "BULLISH/NEUTRAL"). 
-                - Scegli sempre e solo UN valore tra quelli permessi.
-                - Se sei incerto tra due raccomandazioni, scegli la più prudente (WATCH).
+                REGOLE DI MAPPATURA ASSET:
+                - Normalizza sempre i Ticker: "Oro" -> "XAUUSD", "Eurodollaro/EU" -> "EURUSD", "Nasdaq/NQ" -> "NQ100", "Cable/GU" -> "GBPUSD", "Dax" -> "DAX40".
 
-                OUTPUT RICHIESTO (JSON PURO, nessun markdown):
+                VINCOLI DI FORMATO:
+                - SENTIMENT: Solo BULLISH, BEARISH, NEUTRAL.
+                - RECOMMENDATION: Solo BUY, SELL, WATCH, HOLD (scelta singola, no slash).
+                - REASONING: Max 250 caratteri. Se l'analisi è tecnica, cita i concetti usati (es. "Rifiuto dell'order block H4 dopo sweep della liquidità").
+
+                OUTPUT RICHIESTO (JSON PURO):
                 {{
-                    "summary": "Riassunto generale del video in 2 frasi.",
-                    "macro_context": "Breve descrizione del sentiment macroeconomico.",
+                    "summary": "Sintesi estrema.",
+                    "macro_context": "Sentiment generale del mercato o del video.",
                     "insights": [
                         {{
-                            "ticker": "TICKER_SYMBOL",
-                            "asset_class": "FOREX, STOCK, CRYPTO, INDEX, o COMMODITY",
-                            "sentiment": "BULLISH, BEARISH, o NEUTRAL",
-                            "recommendation": "BUY, SELL, WATCH, o HOLD",
-                            "timeframe": "INTRADAY, SHORT_TERM, MEDIUM_TERM, o LONG_TERM",
-                            "reasoning": "Sintesi operativa.",
-                            "key_levels": "Supp: 1.0500, Res: 1.0650",
-                            "catalyst": "Evento principale",
-                            "confidence": 8
+                            "ticker": "TICKER",
+                            "asset_class": "FOREX/STOCK/INDEX/COMMODITY/CRYPTO",
+                            "sentiment": "...",
+                            "recommendation": "...",
+                            "timeframe": "INTRADAY/SHORT_TERM/MEDIUM_TERM/LONG_TERM",
+                            "reasoning": "Spiegazione tecnica o fondamentale sintetica.",
+                            "key_levels": "Inserisci livelli precisi (es. Supp: 1.0540, Res: 1.0650, Target: 1.0800).",
+                            "catalyst": "Evento (es. 'ICT Technical Analysis', 'Earnings Q4', 'Fed Speech')",
+                            "confidence": 1-10
                         }}
                     ]
                 }}
