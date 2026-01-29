@@ -1,11 +1,9 @@
-# CSS Globale
 GLOBAL_STYLES = """
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Inter:wght@400;500;600&display=swap');
     .stApp { background: #0E1117; }
     h1, h2, h3, p, div { font-family: 'Inter', sans-serif; color: #FAFAFA; }
     
-    /* Bottoni Filtro */
     div[data-testid="column"] button {
         width: 100% !important; height: 50px !important;
         border-radius: 12px !important; font-family: 'Space Grotesk' !important;
@@ -16,33 +14,52 @@ GLOBAL_STYLES = """
         color: white !important; box-shadow: 0 4px 15px rgba(102,126,234,0.4);
     }
     div[data-testid="column"] button[kind="secondary"] {
-        background: #1E232F !important; color: #A0AEC0 !important;
-        border: 1px solid #2D3748 !important;
+        background: #1E232F !important; color: #A0AEC0 !important; border: 1px solid #2D3748 !important;
     }
 </style>
 """
 
-# CSS Card (interno iframe)
 CARD_CSS = """
 <style>
-    body { font-family: 'Inter', sans-serif; background: #0E1117; color: #fff; padding: 0; margin: 0; }
+    body { font-family: 'Inter', sans-serif; background: #0E1117; color: #fff; padding: 10px; margin: 0; }
     .modern-card {
-        background: #fff; border-radius: 20px; padding: 24px;
-        height: 360px; display: flex; flex-direction: column;
-        position: relative; overflow: hidden; color: #1A1A2E; margin-bottom: 20px;
+        background: #FFFFFF; border-radius: 20px; padding: 22px;
+        display: flex; flex-direction: column; position: relative;
+        color: #1A1A2E; margin-bottom: 25px; transition: transform 0.2s;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid #E2E8F0;
     }
-    .modern-card:hover { transform: translateY(-5px); }
-    .modern-card::before { content:''; position: absolute; top:0; left:0; right:0; height:6px; background: linear-gradient(90deg, #FF6B6B, #FFE66D); }
-    .tag-bullish { background: #06FFA5; color: #004d40; padding: 4px 12px; border-radius: 50px; font-weight: 800; font-size: 11px; }
-    .tag-bearish { background: #FF6B6B; color: white; padding: 4px 12px; border-radius: 50px; font-weight: 800; font-size: 11px; }
-    .card-title { font-weight: 700; font-family: 'Space Grotesk'; font-size: 18px; margin: 10px 0; height: 48px; overflow: hidden; }
-    .card-text { font-size: 14px; color: #4A5568; height: 85px; overflow: hidden; margin-bottom: 15px; }
+    .modern-card:hover { transform: translateY(-5px); border-color: #667eea; }
+    
+    /* Header & Badges */
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .tag { padding: 4px 10px; border-radius: 6px; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+    .tag-style { background: #F1F5F9; color: #64748B; border: 1px solid #E2E8F0; }
+    
+    .rec-long { background: #DCFCE7; color: #166534; }
+    .rec-short { background: #FEE2E2; color: #991B1B; }
+    .rec-watch { background: #FEF9C3; color: #854d0e; }
+    
+    .card-ticker { font-family: 'Space Grotesk'; font-size: 26px; font-weight: 700; color: #0F172A; margin: 0; }
+    .card-name { font-size: 14px; color: #64748B; margin-bottom: 10px; }
+
+    /* Summary & Drivers */
+    .summary-text { font-size: 15px; font-weight: 600; color: #1E293B; line-height: 1.4; margin-bottom: 15px; border-left: 3px solid #667eea; padding-left: 10px; }
+    .drivers-list { margin: 0 0 15px 0; padding-left: 20px; font-size: 13px; color: #475569; }
+
+    /* Technical Box */
+    .levels-box { 
+        background: #F8FAFC; border-radius: 12px; padding: 12px; border: 1px solid #F1F5F9; 
+        display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 15px;
+    }
+    .level-item { font-size: 11px; color: #64748B; }
+    .level-val { font-size: 13px; font-weight: 700; color: #0F172A; display: block; }
+
     .cta-button {
-        display: flex; align-items: center; justify-content: center; width: 100%; height: 40px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;
-        text-decoration: none; font-weight: 700; border-radius: 10px; margin-top: auto;
+        display: flex; align-items: center; justify-content: center; width: 100%; height: 42px;
+        background: #0F172A; color: white; text-decoration: none; font-weight: 700;
+        border-radius: 10px; font-size: 12px; margin-top: auto;
     }
-    .cards-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-    .asset-header { font-family: 'Space Grotesk'; font-size: 28px; font-weight: 700; color: #FAFAFA; margin: 30px 0 20px 0; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px; }
+    .asset-header { font-family: 'Space Grotesk'; font-size: 32px; font-weight: 700; color: #FAFAFA; margin: 40px 0 20px 0; border-bottom: 2px solid #2D3748; padding-bottom: 10px; }
 </style>
 """

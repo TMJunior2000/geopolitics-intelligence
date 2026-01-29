@@ -34,7 +34,6 @@ def run_pipeline(mode: str):
             
             v['content'] = transcript
             
-            # --- CORREZIONE QUI ---
             # Passiamo sia la trascrizione CHE il titolo del video
             analysis = ai.analyze_video(transcript, v['title'])
             # ----------------------
