@@ -39,7 +39,7 @@ def get_live_videos(handle: str, max_results: int = 3):
 def get_backfill_videos(handle: str):
     videos = []
     # Date hardcoded per il tuo bisogno specifico (o configurabili)
-    START_DATE = datetime(2026, 1, 27)
+    START_DATE = datetime(2026, 1, 1)
     END_DATE = datetime(2026, 1, 28, 23, 59, 59)
     
     print(f"   📅 Backfill range: {START_DATE.date()} -> {END_DATE.date()}")

@@ -20,7 +20,7 @@ class ApifyService:
             for item in dataset_items:
                 if not isinstance(item, dict): continue
                 
-                # Logica "scavatrice" per pintostudio
+                # Logica "scavatrice" per apify
                 data_content = item.get("data")
                 
                 # Caso Lista (comune)
