@@ -1,8 +1,8 @@
 name: Trading Intelligence Worker
 
 on:
-  schedule:
-    - cron: '0 * * * *' # Esegue ogni ora in modalità LIVE (default)
+  #schedule:
+  #  - cron: '0 * * * *' # Esegue ogni ora in modalità LIVE (default)
   
   workflow_dispatch: # Permette l'avvio manuale con opzioni
     inputs:

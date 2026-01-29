@@ -20,45 +20,50 @@ class AIService:
         truncated_text = text[:Config.MAX_CHARS_AI]
         
         prompt = f"""
-                Sei un Senior Financial Analyst esperto sia in analisi Fondamentale/Macro che in analisi Tecnica Avanzata (SMC - Smart Money Concepts, ICT).
-                Analizza la trascrizione del video ed estrai insights operativi.
+        # Ruolo
+        Agisci come un Analista Finanziario AI Senior. Analizza la trascrizione del video, identifica il tipo di analisi e estrai dati strutturati per una Dashboard di Trading.
 
-                TITOLO VIDEO: {video_title}
-                
-                ISTRUZIONI SPECIFICHE PER CANALE:
-                - Se il testo parla di macroeconomia o earnings (stile InvestireBiz): focalizzati su Catalyst, Fondamentali e Sentiment di medio periodo.
-                - Se il testo parla di livelli tecnici, zone di liquidità o pattern (stile MarketMind): identifica con precisione termini come Order Block, Fair Value Gap (FVG), BPR, Liquidity Sweep e zone OTE. Mantieni i riferimenti ai timeframe (H4, H1, ecc.).
+        # Contesto Input
+        Identifica lo stile di analisi per ogni asset basandoti sulle keyword:
+        1. **Analisi Tecnica (MarketMind)**: Cerca "BPR", "FVG", "Order Block", "Sweep", "Liquidity", "H1/H4". Focus su livelli di prezzo precisi.
+        2. **Analisi Fondamentale (Investire.biz)**: Cerca "EPS", "Fatturato", "Capex", "Macro", "Fed", "Geopolitica". Focus su driver economici.
+        3. **Analisi Quantitativa (Investire.biz Trading)**: Cerca "Stagionalità", "COT Report", "Forecaster", "Probabilità", "Correlazioni". Focus su finestre temporali.
 
-                REGOLE DI MAPPATURA ASSET:
-                - Normalizza sempre i Ticker: "Oro" -> "XAUUSD", "Eurodollaro/EU" -> "EURUSD", "Nasdaq/NQ" -> "NQ100", "Cable/GU" -> "GBPUSD", "Dax" -> "DAX40".
+        # Istruzioni Estrazione Campi
+        - **asset_ticker**: Ticker standard (es. EURUSD, NVDA, BTC).
+        - **recommendation**: Scegli tra "LONG" (o BUY), "SHORT" (o SELL), "WATCH" (osservare livello), "HOLD" (mantenere).
+        - **sentiment**: "Bullish", "Bearish", "Neutral/Range".
+        - **time_horizon**: "Intraday", "Multiday/Weekly", "Medium Term", "Long Term".
+        - **entry_zone / target / stop**: Estrai SOLO se vengono citati numeri o zone specifiche (es. "Order Block H1", "zona 4800"). Altrimenti null.
+        - **key_drivers**: Lista sintetica dei motivi (max 3, es. ["Rottura struttura H4", "Stagionalità negativa Febbraio"]).
 
-                VINCOLI DI FORMATO:
-                - SENTIMENT: Solo BULLISH, BEARISH, NEUTRAL.
-                - RECOMMENDATION: Solo BUY, SELL, WATCH, HOLD (scelta singola, no slash).
-                - REASONING: Max 250 caratteri. Se l'analisi è tecnica, cita i concetti usati (es. "Rifiuto dell'order block H4 dopo sweep della liquidità").
-
-                OUTPUT RICHIESTO (JSON PURO):
+        # Formato Output (JSON Rigoroso)
+        Restituisci ESCLUSIVAMENTE un oggetto JSON valido, senza markdown:
+        {{
+            "video_summary": "Sintesi del tema principale del video (max 200 caratteri).",
+            "macro_sentiment": "Sentiment globale del video (es. RISK_ON, DOLLAR_WEAKNESS, TECH_EARNINGS_FOCUS).",
+            "assets": [
                 {{
-                    "summary": "Sintesi estrema.",
-                    "macro_context": "Sentiment generale del mercato o del video.",
-                    "insights": [
-                        {{
-                            "ticker": "TICKER",
-                            "asset_class": "FOREX/STOCK/INDEX/COMMODITY/CRYPTO",
-                            "sentiment": "...",
-                            "recommendation": "...",
-                            "timeframe": "INTRADAY/SHORT_TERM/MEDIUM_TERM/LONG_TERM",
-                            "reasoning": "Spiegazione tecnica o fondamentale sintetica.",
-                            "key_levels": "Inserisci livelli precisi (es. Supp: 1.0540, Res: 1.0650, Target: 1.0800).",
-                            "catalyst": "Evento (es. 'ICT Technical Analysis', 'Earnings Q4', 'Fed Speech')",
-                            "confidence": 1-10
-                        }}
-                    ]
+                    "asset_ticker": "...",
+                    "asset_name": "...",
+                    "channel_style": "Tecnica" | "Fondamentale" | "Quantitativa",
+                    "sentiment": "...",
+                    "recommendation": "...",
+                    "time_horizon": "...",
+                    "entry_zone": "...",
+                    "target_price": "...",
+                    "stop_invalidation": "...",
+                    "key_drivers": ["...", "..."],
+                    "summary_card": "Frase operativa breve per la card UI (max 25 parole)."
                 }}
+            ]
+        }}
 
-                TRASCRIZIONE:
-                {truncated_text}
-                """
+        # Input Dati
+        Titolo Video: {video_title}
+        Trascrizione:
+        {truncated_text}
+        """
 
         # --- LOGICA DI RETRY (Exponential Backoff) ---
         max_retries = 3
@@ -67,7 +72,7 @@ class AIService:
         for attempt in range(max_retries):
             try:
                 res = self.client.models.generate_content(
-                    model="gemini-flash-latest", 
+                    model="gemini-3.0-pro-preview", 
                     contents=prompt,
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",

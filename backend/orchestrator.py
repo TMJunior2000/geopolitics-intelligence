@@ -45,4 +45,5 @@ def run_pipeline(mode: str):
                 print("      ❌ Analisi AI fallita o vuota.")
             
             # Pausa per evitare rate limit aggressivi
-            time.sleep(2)
+            print("      ⏳ Attesa per rispetto quote Gemini (35s)...")
+            time.sleep(35)
