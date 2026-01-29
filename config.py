@@ -17,7 +17,7 @@ class Config:
     MAX_CHARS_AI: int = 150000 # Ampia finestra per Gemini 2.0 Flash
     
     # Apify Actor ID (quello che abbiamo validato)
-    APIFY_ACTOR_ID: str = "futurizerush/youtube-transcript-scraper"
+    APIFY_ACTOR_ID: str = "scrape-creators/best-youtube-transcripts-scraper"
 
     @classmethod
     def validate(cls):
