@@ -19,17 +19,30 @@ def run_pipeline(mode: str):
         videos = yt.get_videos(handle, mode)
         
         for v in videos:
-            print(f"   Video: {v['title'][:30]}...")
+            print(f"   Video: {v['title'][:40]}...")
             
+            # Controllo esistenza nel DB
             if repo.video_exists(v['url']):
                 print("      ⏭️ Skipped (Exists)")
                 continue
             
+            # Scarico Trascrizione
             transcript = apify.get_transcript(v['url'])
-            if not transcript: continue
+            if not transcript: 
+                print("      ⚠️ No transcript found")
+                continue
             
             v['content'] = transcript
-            analysis = ai.analyze(transcript)
+            
+            # --- CORREZIONE QUI ---
+            # Passiamo sia la trascrizione CHE il titolo del video
+            analysis = ai.analyze_video(transcript, v['title'])
+            # ----------------------
             
             if analysis:
                 repo.save_analysis_transaction(v, analysis)
+            else:
+                print("      ❌ Analisi AI fallita o vuota.")
+            
+            # Pausa per evitare rate limit aggressivi
+            time.sleep(2)
