@@ -18,16 +18,33 @@ CREATE TABLE assets (
   type TEXT -- Es: 'COMMODITY', 'FOREX', 'STOCK', 'INDEX', 'CRYPTO'
 );
 
--- Seed Data (Popoliamo con gli asset menzionati nei video analizzati)
 -- =============================================================================
--- POPOLAMENTO MASSIVO ASSETS
--- Include: Forex Majors/Minors, Commodities (Metalli, Energia, Agri), 
--- Indici Globali, Crypto Top Cap, Big Tech Stocks, Bonds.
+-- POPOLAMENTO MASSIVO ASSETS (ULTRA-COMPLETO)
+-- Include: Forex, Commodities, Indici, Crypto, Bond.
+-- Stocks: Mag 7, DJ30, Nasdaq 100 Top, S&P 500 Key Sectors (Finanza, Energia, Pharma).
 -- =============================================================================
 
 INSERT INTO assets (ticker, name, type) VALUES 
 
--- 1. FOREX (Majors & Crosses)
+-- 1. INDICI (Americhe, Europa, Asia, Volatilità)
+('SPX500', 'S&P 500', 'INDEX'),
+('NQ100', 'Nasdaq 100', 'INDEX'),
+('DJ30', 'Dow Jones Industrial Average', 'INDEX'),
+('RUT2000', 'Russell 2000 (Small Cap)', 'INDEX'),
+('DXY', 'US Dollar Index', 'INDEX'),
+('VIX', 'Volatility Index (Fear Index)', 'INDEX'),
+('DAX40', 'DAX 40 (Germany)', 'INDEX'),
+('FTSE100', 'FTSE 100 (UK)', 'INDEX'),
+('CAC40', 'CAC 40 (France)', 'INDEX'),
+('FTSEMIB', 'FTSE MIB (Italy)', 'INDEX'),
+('IBEX35', 'IBEX 35 (Spain)', 'INDEX'),
+('ESTX50', 'Euro Stoxx 50', 'INDEX'),
+('NIKKEI225', 'Nikkei 225 (Japan)', 'INDEX'),
+('HSI50', 'Hang Seng (Hong Kong)', 'INDEX'),
+('NIFTY50', 'Nifty 50 (India)', 'INDEX'),
+('CHINA50', 'China A50', 'INDEX'),
+
+-- 2. FOREX (Majors, Minors & Crosses)
 ('EURUSD', 'Euro / US Dollar', 'FOREX'),
 ('GBPUSD', 'British Pound / US Dollar', 'FOREX'),
 ('USDJPY', 'US Dollar / Japanese Yen', 'FOREX'),
@@ -43,33 +60,19 @@ INSERT INTO assets (ticker, name, type) VALUES
 ('CADJPY', 'Canadian Dollar / Japanese Yen', 'FOREX'),
 ('EURAUD', 'Euro / Australian Dollar', 'FOREX'),
 ('GBPAUD', 'British Pound / Australian Dollar', 'FOREX'),
+('USDMXN', 'US Dollar / Mexican Peso', 'FOREX'),
+('USDZAR', 'US Dollar / South African Rand', 'FOREX'),
+('USDTRY', 'US Dollar / Turkish Lira', 'FOREX'),
 
--- 2. INDICI (Americhe, Europa, Asia)
-('SPX500', 'S&P 500', 'INDEX'),
-('NQ100', 'Nasdaq 100', 'INDEX'),
-('DJ30', 'Dow Jones Industrial Average', 'INDEX'),
-('RUT2000', 'Russell 2000', 'INDEX'),
-('DXY', 'US Dollar Index', 'INDEX'), -- Indice del Dollaro
-('VIX', 'Volatility Index S&P500', 'INDEX'), -- Indice della Paura
-('DAX40', 'DAX 40 (Germany)', 'INDEX'),
-('FTSE100', 'FTSE 100 (UK)', 'INDEX'),
-('CAC40', 'CAC 40 (France)', 'INDEX'),
-('FTSEMIB', 'FTSE MIB (Italy)', 'INDEX'),
-('IBEX35', 'IBEX 35 (Spain)', 'INDEX'),
-('ESTX50', 'Euro Stoxx 50', 'INDEX'),
-('NIKKEI225', 'Nikkei 225 (Japan)', 'INDEX'),
-('HSI50', 'Hang Seng (Hong Kong)', 'INDEX'),
-('NIFTY50', 'Nifty 50 (India)', 'INDEX'), -- Menzionato nei video (India Deal)
-
--- 3. COMMODITIES (Metalli, Energia, Agricoltura)
+-- 3. COMMODITIES (Metalli, Energia, Softs)
 ('XAUUSD', 'Gold Spot', 'COMMODITY'),
 ('XAGUSD', 'Silver Spot', 'COMMODITY'),
 ('XPTUSD', 'Platinum Spot', 'COMMODITY'),
-('XPDUSD', 'Palladium Spot', 'COMMODITY'),
 ('HG1!', 'Copper Futures', 'COMMODITY'),
 ('WTI', 'Crude Oil WTI', 'COMMODITY'),
 ('BRENT', 'Crude Oil Brent', 'COMMODITY'),
 ('NGAS', 'Natural Gas', 'COMMODITY'),
+('URANIUM', 'Uranium Futures', 'COMMODITY'), -- Settore nucleare citato nei video
 ('CORN', 'Corn Futures', 'COMMODITY'),
 ('WHEAT', 'Wheat Futures', 'COMMODITY'),
 ('SOY', 'Soybean Futures', 'COMMODITY'),
@@ -77,31 +80,100 @@ INSERT INTO assets (ticker, name, type) VALUES
 ('SUGAR', 'Sugar Futures', 'COMMODITY'),
 ('COCOA', 'Cocoa Futures', 'COMMODITY'),
 
--- 4. CRYPTO (Top Cap)
+-- 4. CRYPTO (Top Market Cap & High Volatility)
 ('BTCUSD', 'Bitcoin', 'CRYPTO'),
 ('ETHUSD', 'Ethereum', 'CRYPTO'),
 ('SOLUSD', 'Solana', 'CRYPTO'),
 ('XRPUSD', 'Ripple', 'CRYPTO'),
 ('BNBUSD', 'Binance Coin', 'CRYPTO'),
+('DOGEUSD', 'Dogecoin', 'CRYPTO'),
 ('ADAUSD', 'Cardano', 'CRYPTO'),
+('AVAXUSD', 'Avalanche', 'CRYPTO'),
+('DOTUSD', 'Polkadot', 'CRYPTO'),
+('LINKUSD', 'Chainlink', 'CRYPTO'),
 
--- 5. STOCKS (Magnificent 7 + Key Stocks citate spesso)
-('TSLA', 'Tesla Inc.', 'STOCK'),
+-- 5. STOCKS - MAGNIFICENT 7 & BIG TECH (US100 Leaders)
+('NVDA', 'NVIDIA Corp.', 'STOCK'),
 ('MSFT', 'Microsoft Corp.', 'STOCK'),
 ('AAPL', 'Apple Inc.', 'STOCK'),
 ('GOOGL', 'Alphabet Inc. (Google)', 'STOCK'),
 ('AMZN', 'Amazon.com Inc.', 'STOCK'),
-('META', 'Meta Platforms (Facebook)', 'STOCK'),
-('NVDA', 'NVIDIA Corp.', 'STOCK'),
-('NFLX', 'Netflix Inc.', 'STOCK'),
+('META', 'Meta Platforms', 'STOCK'),
+('TSLA', 'Tesla Inc.', 'STOCK'),
+('AVGO', 'Broadcom Inc.', 'STOCK'),
 ('AMD', 'Advanced Micro Devices', 'STOCK'),
+('NFLX', 'Netflix Inc.', 'STOCK'),
+('ADBE', 'Adobe Inc.', 'STOCK'),
+('CRM', 'Salesforce Inc.', 'STOCK'),
+('ORCL', 'Oracle Corp.', 'STOCK'),
+('CSCO', 'Cisco Systems', 'STOCK'),
 ('INTC', 'Intel Corp.', 'STOCK'),
+('QCOM', 'Qualcomm Inc.', 'STOCK'),
+('TXN', 'Texas Instruments', 'STOCK'),
+('IBM', 'International Business Machines', 'STOCK'),
 ('PLTR', 'Palantir Technologies', 'STOCK'),
-('COIN', 'Coinbase Global', 'STOCK'),
+('SMCI', 'Super Micro Computer', 'STOCK'), -- Molto volatile, spesso citata
+('ARM', 'Arm Holdings', 'STOCK'),
 
--- 6. BONDS (Titoli di Stato chiave per il Macro)
+-- 6. STOCKS - FINANZA & PAGAMENTI (S&P 500 / DJ30)
+('JPM', 'JPMorgan Chase & Co.', 'STOCK'),
+('BAC', 'Bank of America Corp.', 'STOCK'),
+('WFC', 'Wells Fargo & Co.', 'STOCK'),
+('GS', 'Goldman Sachs Group', 'STOCK'),
+('MS', 'Morgan Stanley', 'STOCK'),
+('V', 'Visa Inc.', 'STOCK'),
+('MA', 'Mastercard Inc.', 'STOCK'),
+('AXP', 'American Express Co.', 'STOCK'),
+('PYPL', 'PayPal Holdings', 'STOCK'),
+('BLK', 'BlackRock Inc.', 'STOCK'),
+('COIN', 'Coinbase Global', 'STOCK'), -- Proxy Crypto
+('HOOD', 'Robinhood Markets', 'STOCK'),
+
+-- 7. STOCKS - RETAIL & CONSUMER GOODS (DJ30 Staples)
+('WMT', 'Walmart Inc.', 'STOCK'),
+('TGT', 'Target Corp.', 'STOCK'),
+('HD', 'Home Depot Inc.', 'STOCK'),
+('AMZN', 'Amazon (Retail)', 'STOCK'),
+('COST', 'Costco Wholesale', 'STOCK'),
+('KO', 'Coca-Cola Co.', 'STOCK'),
+('PEP', 'PepsiCo Inc.', 'STOCK'),
+('MCD', 'McDonald''s Corp.', 'STOCK'),
+('PG', 'Procter & Gamble', 'STOCK'),
+('NKE', 'Nike Inc.', 'STOCK'),
+('DIS', 'Walt Disney Co.', 'STOCK'),
+
+-- 8. STOCKS - HEALTHCARE & PHARMA (Molto attive per GLP-1 drugs)
+('LLY', 'Eli Lilly and Co.', 'STOCK'),
+('NVO', 'Novo Nordisk', 'STOCK'),
+('UNH', 'UnitedHealth Group', 'STOCK'),
+('JNJ', 'Johnson & Johnson', 'STOCK'),
+('PFE', 'Pfizer Inc.', 'STOCK'),
+('MRK', 'Merck & Co.', 'STOCK'),
+('ABBV', 'AbbVie Inc.', 'STOCK'),
+
+-- 9. STOCKS - ENERGIA & INDUSTRIA (DJ30 / S&P500)
+('XOM', 'Exxon Mobil Corp.', 'STOCK'),
+('CVX', 'Chevron Corp.', 'STOCK'),
+('SHEL', 'Shell PLC', 'STOCK'),
+('OXY', 'Occidental Petroleum', 'STOCK'),
+('CAT', 'Caterpillar Inc.', 'STOCK'),
+('DE', 'Deere & Company', 'STOCK'),
+('BA', 'Boeing Co.', 'STOCK'),
+('LMT', 'Lockheed Martin', 'STOCK'), -- Settore Difesa/Geopolitica
+('RTX', 'RTX Corp (Raytheon)', 'STOCK'),
+('GE', 'General Electric', 'STOCK'),
+
+-- 10. STOCKS - AUTOMOTIVE (Oltre Tesla)
+('F', 'Ford Motor Co.', 'STOCK'),
+('GM', 'General Motors', 'STOCK'),
+('TM', 'Toyota Motor Corp.', 'STOCK'),
+('RACE', 'Ferrari NV', 'STOCK'),
+('STLA', 'Stellantis NV', 'STOCK'),
+
+-- 11. BONDS (Titoli di Stato)
 ('US10Y', 'US 10 Year Treasury Yield', 'BOND'),
 ('US02Y', 'US 2 Year Treasury Yield', 'BOND'),
+('US30Y', 'US 30 Year Treasury Yield', 'BOND'),
 ('DE10Y', 'Germany 10 Year Bund Yield', 'BOND'),
 ('IT10Y', 'Italy 10 Year BTP Yield', 'BOND')
 
