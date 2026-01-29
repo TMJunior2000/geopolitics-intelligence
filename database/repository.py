@@ -20,44 +20,56 @@ class MarketRepository:
         raise Exception(f"Failed to source ID for: {name}")
 
     def save_analysis_transaction(self, video_data: Dict[str, Any], analysis: Dict[str, Any]):
-        """Salva Video e Insights in sequenza."""
-        try:
-            # 1. Salva Feed
-            source_id = self.get_source_id(video_data['ch_title'])
-            feed_payload = {
-                "source_id": source_id,
-                "title": video_data['title'],
-                "url": video_data['url'],
-                "published_at": video_data['date'],
-                "content": video_data.get('content', ''),
-                "summary": analysis.get("summary", "N/A"),
-                "raw_metadata": {"vid": video_data['id']}
-            }
-            
-            res_feed = self.client.table("intelligence_feed").insert(feed_payload).execute()
-            if not res_feed.data: raise Exception("Errore insert feed")
-            
-            video_db_id = int(cast(Dict[str, Any], res_feed.data[0]).get('id', 0))
-            print(f"      💾 DB: Feed salvato (ID: {video_db_id})")
-
-            # 2. Salva Insights
-            insights = analysis.get("assets_analyzed", [])
-            if insights:
-                rows = []
-                for item in insights:
-                    rows.append({
-                        "video_id": video_db_id,
-                        "asset_ticker": item.get("ticker", "UNKNOWN").upper(),
-                        "sentiment": item.get("sentiment", "NEUTRAL"),
-                        "timeframe": item.get("timeframe", "MEDIUM"),
-                        "key_levels": item.get("key_levels", ""),
-                        "ai_reasoning": item.get("reasoning", "")
-                    })
-                self.client.table("market_insights").insert(rows).execute()
-                print(f"      💾 DB: Salvati {len(rows)} insights.")
+            try:
+                # 1. Salva Feed (Invariato)
+                source_id = self.get_source_id(video_data['ch_title'])
+                feed_payload = {
+                    "source_id": source_id,
+                    "title": video_data['title'],
+                    "url": video_data['url'],
+                    "published_at": video_data['date'],
+                    "content": video_data.get('content', '')[:100000], # Limite sicurezza DB
+                    "summary": analysis.get("summary", "N/A"),
+                    "raw_metadata": {
+                        "vid": video_data['id'], 
+                        "macro_context": analysis.get("macro_context", "")
+                    }
+                }
                 
-        except Exception as e:
-            print(f"      ❌ DB Error: {e}")
+                res_feed = self.client.table("intelligence_feed").insert(feed_payload).execute()
+                if not res_feed.data: raise Exception("Errore insert feed")
+                
+                video_db_id = int(cast(Dict[str, Any], res_feed.data[0]).get('id', 0))
+                print(f"      💾 DB: Feed salvato (ID: {video_db_id})")
+
+                # 2. Salva Insights (Nuova struttura)
+                insights_list = analysis.get("insights", []) # Nota: ho cambiato key da "assets_analyzed" a "insights" nel prompt
+                
+                if insights_list:
+                    rows = []
+                    for item in insights_list:
+                        # Prima assicuriamoci che l'asset esista nella tabella Assets (opzionale ma consigliato)
+                        # self.ensure_asset_exists(item.get("ticker")) <--- Se volessi essere rigoroso
+
+                        rows.append({
+                            "video_id": video_db_id,
+                            "asset_ticker": item.get("ticker", "UNKNOWN").upper(),
+                            "asset_class": item.get("asset_class", "OTHER"),
+                            "sentiment": item.get("sentiment", "NEUTRAL"),
+                            "recommendation": item.get("recommendation", "WATCH"),
+                            "timeframe": item.get("timeframe", "MEDIUM_TERM"),
+                            "key_levels": item.get("key_levels", ""),
+                            "ai_reasoning": item.get("reasoning", ""),
+                            "catalyst": item.get("catalyst", ""),
+                            "confidence_score": item.get("confidence", 5)
+                        })
+                    
+                    if rows:
+                        self.client.table("market_insights").insert(rows).execute()
+                        print(f"      💾 DB: Salvati {len(rows)} insights operativi.")
+                    
+            except Exception as e:
+                print(f"      ❌ DB Error Transaction: {e}")
 
     def get_all_insights_flat(self) -> List[Dict[str, Any]]:
         """Restituisce dati appiattiti per Pandas (Frontend)."""
