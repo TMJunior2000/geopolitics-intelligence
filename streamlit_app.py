@@ -1,45 +1,54 @@
 import streamlit as st
 import pandas as pd
 from database.repository import MarketRepository
-from frontend.ui.styles import load_css  # <-- Importiamo il loader
+from frontend.ui.styles import load_css
 from frontend.ui.cards import render_grid
 
+# Configurazione pagina deve essere la PRIMA istruzione Streamlit
 st.set_page_config(page_title="Trading Intel 3.0", layout="wide", page_icon="🧠")
 
 # --- CARICAMENTO CSS ESTERNO ---
-load_css()  # <-- Carica frontend/assets/style.css
+# Ora gestito in modo sicuro rispetto ai path
+load_css("style.css")
 
 @st.cache_data(ttl=300)
 def load_data():
-    repo = MarketRepository()
-    raw = repo.get_all_insights_flat()
-    if not raw: return pd.DataFrame()
-    df = pd.DataFrame(raw)
-    if 'published_at' in df.columns:
-        df['published_at'] = pd.to_datetime(df['published_at'])
-    return df
+    try:
+        repo = MarketRepository()
+        raw = repo.get_all_insights_flat()
+        if not raw: 
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(raw)
+        if 'published_at' in df.columns:
+            df['published_at'] = pd.to_datetime(df['published_at'], errors='coerce')
+        return df
+    except Exception as e:
+        st.error(f"Errore connessione database: {e}")
+        return pd.DataFrame()
 
 df = load_data()
 
 # --- UI HEADER ---
 st.markdown("""
 <div style="text-align:center; padding: 20px 0;">
-    <h1 style="font-family:'Space Grotesk'; font-size: 50px; margin:0;">🧠 Trading Intelligence</h1>
+    <h1 style="font-family:'Space Grotesk', sans-serif; font-size: 50px; margin:0;">🧠 Trading Intelligence</h1>
     <p style="color:#888; letter-spacing:2px;">AI-POWERED MARKET ANALYSIS TERMINAL</p>
 </div>
 """, unsafe_allow_html=True)
 
 if df.empty:
-    st.warning("⚠️ Nessun dato trovato nel database.")
+    st.warning("⚠️ Nessun dato trovato o database non raggiungibile.")
     st.stop()
 
 # --- FILTRI ---
-unique_assets = sorted(df['asset_ticker'].unique().tolist())
+unique_assets = sorted(df['asset_ticker'].dropna().unique().tolist())
 all_assets = ["TUTTI"] + unique_assets
 
 if 'active_filter' not in st.session_state:
     st.session_state.active_filter = "TUTTI"
 
+# Grid dei filtri
 buttons_per_row = 8
 for row_idx in range(0, len(all_assets), buttons_per_row):
     row_assets = all_assets[row_idx:row_idx + buttons_per_row]
@@ -47,8 +56,10 @@ for row_idx in range(0, len(all_assets), buttons_per_row):
     
     for i, asset in enumerate(row_assets):
         with cols[i]:
+            # Nota: Streamlit non supporta stili condizionali completi sui bottoni nativi facilmente
+            # ma il CSS targetta tutti i bottoni. Per evidenziare l'attivo servirebbe un componente custom 
+            # o accettare lo stile "primary" standard di Streamlit.
             is_active = st.session_state.active_filter == asset
-            # I bottoni prenderanno lo stile dal file CSS esterno
             if st.button(asset, key=f"btn_{asset}", 
                         type="primary" if is_active else "secondary",
                         use_container_width=True):
