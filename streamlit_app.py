@@ -1,14 +1,18 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import pandas as pd
 from database.repository import MarketRepository
+# Rimuovi l'import di components, non serve più
+# import streamlit.components.v1 as components 
 from frontend.ui.styles import GLOBAL_STYLES, CARD_CSS
 from frontend.ui.cards import generate_grid_html
 
 st.set_page_config(page_title="Trading Intel 3.0", layout="wide", page_icon="🧠")
-st.markdown(GLOBAL_STYLES, unsafe_allow_html=True)
 
-@st.cache_data(ttl=60) # Refresh veloce per test
+# Inietta gli stili globali E gli stili delle card subito all'inizio
+st.markdown(GLOBAL_STYLES, unsafe_allow_html=True)
+st.markdown(CARD_CSS, unsafe_allow_html=True)
+
+@st.cache_data(ttl=60)
 def load_data():
     repo = MarketRepository()
     raw = repo.get_all_insights_flat()
@@ -50,17 +54,8 @@ for i, asset in enumerate(all_assets):
 # --- RENDER ---
 target_list = unique_assets if st.session_state.active_filter == "TUTTI" else [st.session_state.active_filter]
 html_cards = generate_grid_html(df, target_list)
-
-# Calcolo altezza dinamica approssimativa
-num_cards = len(df[df['asset_ticker'].isin(target_list)])
-rows = (num_cards // 3) + 1
-dynamic_height = max(800, rows * 550)
-
-components.html(
-    f"<html><head>{CARD_CSS}</head><body>{html_cards}</body></html>",
-    height=dynamic_height, 
-    scrolling=False
-)
+st.markdown(html_cards, unsafe_allow_html=True)
+# ============================
 
 # --- FOOTER ---
 st.markdown("---")
