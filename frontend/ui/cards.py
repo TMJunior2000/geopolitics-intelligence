@@ -44,75 +44,74 @@ def _safe_render_template(template_name, **kwargs):
         return f""
     
 def _render_single_card(row):
-    # 1. Gestione Colore e Tipo (Dati dal DB)
-    channel_name = row.get('source_name', '')
-    asset_style = row.get('channel_style', 'N.D.')
-    sentiment = row.get('sentiment', 'N.D.')
-    recommendation = row.get('recommendation', 'WATCH')
+    # --- SETUP DATI ---
+    sentiment = str(row.get('sentiment', 'NEUTRAL')).upper()
+    recommendation = str(row.get('recommendation', 'WATCH')).upper()
+    style_type = row.get('channel_style', 'N.D.').upper()
     
-    # Colore bordo in base al canale
-    accent_color = "#34495e" 
-    if "investire biz" in channel_name.lower():
-        accent_color = "#2ecc71"  # Verde
-    elif "marketmind" in channel_name.lower():
-        accent_color = "#95a5a6"  # Grigio
+    # Mapping per le classi CSS dei tuoi badge
+    rec_class = _get_badge_class(recommendation) # Usa la tua funzione esistente
+    
+    # Colore bordo dinamico (basato sulla fonte)
+    channel_name = row.get('source_name', '')
+    accent_color = "#34495e"
+    if "investire biz" in channel_name.lower(): accent_color = "#2ecc71"
+    elif "marketmind" in channel_name.lower(): accent_color = "#95a5a6"
 
-    # 2. Formattazione Data
-    raw_date = row.get('published_at')
-    display_date = "Data N.D."
-    if raw_date:
-        try:
-            if hasattr(raw_date, 'strftime'):
-                display_date = raw_date.strftime("%d/%m/%Y")
-            else:
-                import pandas as pd
-                display_date = pd.to_datetime(raw_date).strftime("%d/%m/%Y")
-        except Exception:
-            display_date = str(raw_date)[:10]
+    # Formattazione Data
+    import pandas as pd
+    try:
+        display_date = pd.to_datetime(row.get('published_at')).strftime("%d %b %Y")
+    except:
+        display_date = "N.D."
 
-    # 3. Rendering Card
+    # --- RENDERING ---
     with st.container(border=True):
-        # Header: Data e Ticker con bordo colorato del canale
+        # Header: Ticker + Data con stile Space Grotesk (dal tuo CSS)
         st.markdown(f"""
-            <div style="border-left: 5px solid {accent_color}; padding-left: 10px; margin-bottom: 15px;">
-                <span style="color: #888; font-size: 0.8rem;">📅 {display_date}</span>
-                <h3 style="margin: 0;">{row.get('asset_ticker')}</h3>
-                <span style="font-size: 0.85rem; opacity: 0.8;">🛠️ {asset_style}</span>
+            <div style="border-left: 4px solid {accent_color}; padding-left: 12px; margin-bottom: 15px;">
+                <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                    <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif;">{row.get('asset_ticker')}</h2>
+                    <span style="font-size: 0.8rem; color: #888;">{display_date}</span>
+                </div>
+                <div class="badge badge-style" style="margin-top: 5px;"># {style_type}</div>
             </div>
         """, unsafe_allow_html=True)
 
-        # Info Sentiment e Recommendation
-        col_a, col_b = st.columns(2)
-        col_a.caption("Sentiment")
-        col_a.markdown(f"**{sentiment}**")
-        col_b.caption("Recommendation")
-        col_b.markdown(f"**{recommendation}**")
+        # La Summary Card (Sintesi Analisi)
+        st.info(row.get('summary_card', 'No summary available.'))
 
-        st.markdown("---")
+        # Box Tecnico con i Badge (Sentiment e Rec)
+        # Usiamo le tue classi .badge e .badge-long/short/watch
+        st.markdown(f"""
+            <div style="display: flex; gap: 8px; margin-bottom: 15px;">
+                <div class="badge badge-style" style="background: transparent; border: 1px solid #444;">{sentiment}</div>
+                <div class="badge {rec_class}">{recommendation}</div>
+            </div>
+        """, unsafe_allow_html=True)
 
-        # Bottone Dettagli
-        if st.button("🔍 DETTAGLI COMPLETI", key=f"details_{row['id']}", use_container_width=True):
-            _show_full_analysis_modal(row)
+        # Bottone "Dettagli" (Prende lo stile .stButton > button dal tuo CSS)
+        if st.button("✨ KEY DRIVERS", key=f"btn_{row['id']}", use_container_width=True):
+            _show_drivers_modal(row)
 
-@st.dialog("Dettaglio Analisi")
-def _show_full_analysis_modal(row):
-    st.subheader(f"{row['asset_ticker']} - {row.get('asset_name', '')}")
+@st.dialog("🎯 Key Drivers")
+def _show_drivers_modal(row):
+    st.subheader(f"Insight: {row.get('asset_ticker')}")
     
-    # Visualizzazione dei Key Drivers all'interno del dettaglio
+    # Qui usiamo la tua classe .tech-box per i drivers
     drivers = row.get('key_drivers')
     if drivers and isinstance(drivers, list):
-        st.markdown("### 🎯 Key Drivers")
-        drivers_html = "".join([f"<li style='margin-bottom: 5px;'>{d}</li>" for d in drivers])
-        st.markdown(f"<ul style='padding-left: 20px;'>{drivers_html}</ul>", unsafe_allow_html=True)
-    
-    st.markdown("---")
-    st.markdown("### 📝 Analisi Completa")
-    st.write(row.get('video_summary') or row.get('summary_card'))
-    
-    if row.get('video_url'):
-        st.divider()
-        st.link_button("📺 Guarda Video Originale", row['video_url'], use_container_width=True)
-
+        for d in drivers:
+            st.markdown(f"""
+                <div class="tech-box" style="margin-bottom: 8px; padding: 10px;">
+                    <div class="tech-row">
+                        <span class="tech-val">⚡ {d}</span>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.write("Nessun driver disponibile.")
+        
 def render_grid(df, assets_to_show):
     """Funzione principale chiamata dalla dashboard"""
     if df.empty:
