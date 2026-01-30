@@ -8,7 +8,7 @@ from frontend.ui.cards import generate_grid_html
 st.set_page_config(page_title="Trading Intel 3.0", layout="wide", page_icon="🧠")
 st.markdown(GLOBAL_STYLES, unsafe_allow_html=True)
 
-@st.cache_data(ttl=60) # Refresh veloce per test
+@st.cache_data(ttl=300)
 def load_data():
     repo = MarketRepository()
     raw = repo.get_all_insights_flat()
@@ -20,7 +20,7 @@ def load_data():
 
 df = load_data()
 
-# --- UI HEADER ---
+# --- UI HEADER (ORIGINALE) ---
 st.markdown("""
 <div style="text-align:center; padding: 20px 0;">
     <h1 style="font-family:'Space Grotesk'; font-size: 50px; margin:0;">🧠 Trading Intelligence</h1>
@@ -32,42 +32,64 @@ if df.empty:
     st.warning("⚠️ Nessun dato trovato nel database.")
     st.stop()
 
-# --- FILTRI ---
+# --- FILTRI (8 PER RIGA) ---
 unique_assets = sorted(df['asset_ticker'].unique().tolist())
 all_assets = ["TUTTI"] + unique_assets
 
 if 'active_filter' not in st.session_state:
     st.session_state.active_filter = "TUTTI"
 
-cols = st.columns(8)
-for i, asset in enumerate(all_assets):
-    with cols[i % 8]:
-        is_active = st.session_state.active_filter == asset
-        if st.button(asset, key=f"btn_{asset}", type="primary" if is_active else "secondary"):
-            st.session_state.active_filter = asset
-            st.rerun()
+# Dividiamo in righe da 8
+buttons_per_row = 8
+for row_idx in range(0, len(all_assets), buttons_per_row):
+    row_assets = all_assets[row_idx:row_idx + buttons_per_row]
+    cols = st.columns(len(row_assets))
+    
+    for i, asset in enumerate(row_assets):
+        with cols[i]:
+            is_active = st.session_state.active_filter == asset
+            if st.button(asset, key=f"btn_{asset}", 
+                        type="primary" if is_active else "secondary",
+                        use_container_width=True):
+                st.session_state.active_filter = asset
+                st.rerun()
+
+st.markdown("<br>", unsafe_allow_html=True)
 
 # --- RENDER ---
 target_list = unique_assets if st.session_state.active_filter == "TUTTI" else [st.session_state.active_filter]
 html_cards = generate_grid_html(df, target_list)
 
-# Calcolo altezza dinamica approssimativa
+# Calcolo altezza per vedere tutte le card
 num_cards = len(df[df['asset_ticker'].isin(target_list)])
-rows = (num_cards // 3) + 1
-dynamic_height = max(800, rows * 550)
+cards_per_row = 3
+rows = (num_cards + cards_per_row - 1) // cards_per_row
+# 480px per card + 25px gap + 100px header per asset + 100px padding
+component_height = max(800, rows * 505 + len(target_list) * 100 + 100)
 
 components.html(
-    f"<html><head>{CARD_CSS}</head><body>{html_cards}</body></html>",
-    height=dynamic_height, 
-    scrolling=False
+    f"""
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        {CARD_CSS}
+    </head>
+    <body>
+        {html_cards}
+    </body>
+    </html>
+    """,
+    height=component_height,
+    scrolling=False  # Scrollbar nascosta, altezza calcolata per mostrare tutto
 )
 
 # --- FOOTER ---
 st.markdown("---")
 f_col1, f_col2 = st.columns([4,1])
 with f_col1:
-    st.caption(f"Ultimo aggiornamento: {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M:%S')}")
+    st.caption(f"📊 {num_cards} insights | Ultimo aggiornamento: {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M:%S')}")
 with f_col2:
-    if st.button("🔄 AGGIORNA DATI"):
+    if st.button("🔄 AGGIORNA DATI", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
