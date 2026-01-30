@@ -9,7 +9,7 @@ class Config:
     GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
     APIFY_TOKEN: str = os.getenv("APIFY_TOKEN", "")
     
-    YOUTUBE_HANDLES: List[str] = ["@Market.Mind.trading"] #"@InvestireBiz", @investirebiz-analisi
+    YOUTUBE_HANDLES: List[str] = ["@Market.Mind.trading", "@InvestireBiz", "@investirebiz-analisi"] #"@InvestireBiz", @investirebiz-analisi
     MAX_CHARS_AI: int = 150000
     APIFY_ACTOR_ID: str = "scrape-creators/best-youtube-transcripts-scraper"
 

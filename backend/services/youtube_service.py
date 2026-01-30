@@ -10,8 +10,8 @@ class YouTubeService:
         videos = []
         
         # --- CONFIGURAZIONE DATE PER BACKFILL ---
-        BACKFILL_START_DATE = datetime(2026, 1, 12)
-        BACKFILL_END_DATE = datetime(2026, 1, 13, 00, 00, 00)
+        BACKFILL_START_DATE = datetime(2026, 1, 1)
+        BACKFILL_END_DATE = datetime(2026, 1, 30, 00, 00, 00)
         
         print(f"   📡 YouTube Fetch: {handle} | Mode: {mode}")
 
@@ -49,6 +49,17 @@ class YouTubeService:
                     
                     # Parsifica la data (rimuovendo la Z finale per compatibilità datetime base)
                     pub_dt = datetime.strptime(pub_str.replace('Z', ''), "%Y-%m-%dT%H:%M:%S")
+
+                    # Filtraggio video @Market.Mind.trading
+                    if "marketmind" in ch_title.lower():
+                        t_low = title.lower()
+                        # Definiamo cosa vogliamo tenere
+                        keyword_valide = ["analisi settimanale", "opzioni 0dte", "premarket"]
+                        
+                        # Se il titolo non contiene NESSUNA delle nostre keyword, allora lo scartiamo
+                        if not any(key in t_low for key in keyword_valide):
+                            print(f"      🗑️  Scarto video non pertinente: {title}")
+                            continue
 
                     # --- LOGICA LIVE ---
                     if mode == "LIVE":

@@ -111,7 +111,7 @@ def _show_drivers_modal(row):
             """, unsafe_allow_html=True)
     else:
         st.write("Nessun driver disponibile.")
-        
+
 def render_grid(df, assets_to_show):
     """Funzione principale chiamata dalla dashboard"""
     if df.empty:
