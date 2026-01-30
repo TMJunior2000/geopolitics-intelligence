@@ -1,153 +1,71 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@300;400;600&display=swap');
+/* --- FONTS --- */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Inter:wght@400;500;600&display=swap');
 
-/* --- GLOBAL --- */
+/* --- GLOBAL STYLES --- */
 .stApp {
-    background-color: #050505; /* Nero profondo stile Gen Z dark */
+    background-color: #0E1117;
 }
 
-h1, h2, h3 { font-family: 'Space Grotesk', sans-serif !important; letter-spacing: -0.5px; }
-p, div, span, li { font-family: 'Inter', sans-serif; }
-
-/* --- GEN Z CARD STYLES --- */
-.genz-card {
-    /* La variabile --accent-color viene iniettata da Python */
-    background: #111111;
-    border: 1px solid #222;
-    border-radius: 24px;
-    overflow: hidden;
-    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    position: relative;
+h1, h2, h3, h4, h5, p, div, span, li {
+    font-family: 'Inter', sans-serif;
 }
 
-/* Hover Effect: Glow colorato in base al canale */
-.genz-card:hover {
-    transform: translateY(-8px) scale(1.02);
-    border-color: var(--accent-color);
-    box-shadow: 0 10px 40px -10px var(--accent-color-dim);
+/* --- BUTTON OVERRIDES --- */
+/* Target specifico per i bottoni nelle colonne di Streamlit */
+div[data-testid="column"] button {
+    width: 100% !important;
+    border-radius: 8px !important;
+    font-family: 'Space Grotesk' !important;
+    font-weight: 700 !important;
+    border: none !important;
+    transition: all 0.2s ease-in-out;
 }
 
-/* Image Section */
-.card-image-box {
-    height: 180px;
-    width: 100%;
-    background-size: cover;
-    background-position: center;
-    position: relative;
+div[data-testid="column"] button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
 
-/* Overlay sfumato sull'immagine */
-.card-image-box::after {
-    content: "";
-    position: absolute;
-    bottom: 0; left: 0; right: 0;
-    height: 60%;
-    background: linear-gradient(to top, #111111 0%, transparent 100%);
-}
-
-/* Badge Categoria in alto a sinistra */
-.category-pill {
-    position: absolute;
-    top: 12px;
-    left: 12px;
-    background-color: rgba(0,0,0,0.6);
-    backdrop-filter: blur(10px);
-    color: #fff;
-    padding: 6px 14px;
-    border-radius: 50px;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    border: 1px solid rgba(255,255,255,0.1);
-    z-index: 2;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-/* Pallino colorato dentro il badge */
-.dot {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    background-color: var(--accent-color);
-    box-shadow: 0 0 8px var(--accent-color);
-}
-
-/* Content Section */
-.card-body {
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    flex-grow: 1;
-}
-
-.card-ticker {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 24px;
-    font-weight: 700;
-    color: #fff;
-    margin-bottom: 4px;
-    line-height: 1;
-}
-
-.card-name {
-    font-size: 13px;
-    color: #888;
-    margin-bottom: 16px;
-    font-weight: 500;
-}
-
-.card-summary {
-    font-size: 14px;
-    color: #ccc;
-    line-height: 1.5;
-    display: -webkit-box;
-    -webkit-line-clamp: 3; /* Taglia dopo 3 righe */
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    margin-bottom: 20px;
-}
-
-/* Footer con livelli tecnici */
-.card-footer {
-    margin-top: auto;
-    background: #1A1A1A;
-    border-radius: 16px;
-    padding: 12px;
-    border: 1px solid #333;
-    display: flex;
-    justify-content: space-between;
-}
-
-.level-col {
-    display: flex;
-    flex-direction: column;
-}
-
-.lvl-label { font-size: 9px; text-transform: uppercase; color: #666; font-weight: 700; letter-spacing: 1px;}
-.lvl-val { font-size: 13px; font-weight: 600; color: #fff; font-family: 'Space Grotesk'; }
-
-/* Recommendation Badge (Long/Short) */
-.rec-badge {
-    position: absolute;
-    top: 12px;
-    right: 12px;
-    font-size: 10px;
-    font-weight: 800;
+/* --- CUSTOM BADGES --- */
+.badge {
     padding: 4px 8px;
     border-radius: 6px;
+    font-size: 12px;
+    font-weight: 800;
     text-transform: uppercase;
-    z-index: 2;
-    color: #000;
+    display: inline-block;
+    margin-right: 8px;
 }
-.rec-LONG { background: #DCFCE7; color: #166534; }
-.rec-SHORT { background: #FEE2E2; color: #991B1B; }
-.rec-WATCH { background: #FEF9C3; color: #854d0e; }
 
-/* Link Button */
-.card-link {
-    text-decoration: none;
-    color: #fff;
+.badge-long { background: #DCFCE7; color: #166534; border: 1px solid #bbf7d0; }
+.badge-short { background: #FEE2E2; color: #991B1B; border: 1px solid #fecaca; }
+.badge-watch { background: #FEF9C3; color: #854d0e; border: 1px solid #fef08a; }
+.badge-style { background: #F1F5F9; color: #475569; border: 1px solid #e2e8f0; }
+
+/* --- TECHNICAL BOX --- */
+.tech-box {
+    background-color: #1E232F;
+    border-radius: 8px;
+    padding: 12px;
+    margin-top: 10px;
+    border: 1px solid #2D3748;
+}
+
+.tech-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+}
+
+.tech-label {
+    font-size: 10px;
+    color: #A0AEC0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.tech-val {
+    font-size: 14px;
+    font-weight: bold;
+    color: #E2E8F0;
 }
