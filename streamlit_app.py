@@ -60,19 +60,22 @@ st.markdown("<br>", unsafe_allow_html=True)
 target_list = unique_assets if st.session_state.active_filter == "TUTTI" else [st.session_state.active_filter]
 html_cards = generate_grid_html(df, target_list)
 
-# Calcolo altezza per vedere tutte le card
+# Calcolo altezza REALE per mostrare tutto senza scroll
 num_cards = len(df[df['asset_ticker'].isin(target_list)])
 cards_per_row = 3
 rows = (num_cards + cards_per_row - 1) // cards_per_row
-# 480px per card + 25px gap + 100px header per asset + 100px padding
-component_height = max(800, rows * 505 + len(target_list) * 100 + 100)
+
+# Calcolo preciso:
+# - Ogni card: 480px (altezza) + 25px (gap) = 505px per riga
+# - Ogni asset header: 90px
+# - Padding body: 20px top + 20px bottom = 40px
+component_height = (rows * 505) + (len(target_list) * 90) + 40 + 100  # +100 margine sicurezza
 
 components.html(
     f"""
     <html>
     <head>
         <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         {CARD_CSS}
     </head>
     <body>
@@ -81,7 +84,7 @@ components.html(
     </html>
     """,
     height=component_height,
-    scrolling=True  # Scrollbar nascosta, altezza calcolata per mostrare tutto
+    scrolling=False
 )
 
 # --- FOOTER ---
