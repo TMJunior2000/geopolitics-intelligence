@@ -81,7 +81,7 @@ components.html(
     </html>
     """,
     height=component_height,
-    scrolling=False  # Scrollbar nascosta, altezza calcolata per mostrare tutto
+    scrolling=True  # Scrollbar nascosta, altezza calcolata per mostrare tutto
 )
 
 # --- FOOTER ---
