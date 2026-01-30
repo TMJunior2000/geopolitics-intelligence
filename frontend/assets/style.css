@@ -104,9 +104,11 @@ p, div, span, li { font-family: 'Inter', sans-serif; }
     color: #ccc;
     line-height: 1.5;
     display: -webkit-box;
-    -webkit-line-clamp: 3; /* Taglia dopo 3 righe */
+    -webkit-line-clamp: 3; /* Per browser attuali (Chrome, Safari, Edge) */
+    line-clamp: 3;         /* <--- AGGIUNGI QUESTA (Standard futuro) */
     -webkit-box-orient: vertical;
     overflow: hidden;
+
     margin-bottom: 20px;
 }
 
