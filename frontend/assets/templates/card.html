@@ -1,37 +1,22 @@
-<a href="{{ video_url }}" target="_blank" class="card-link">
-    <div class="genz-card" style="--accent-color: {{ color }}; --accent-color-dim: {{ color }}40;">
+<a href="{{ video_url }}" target="_blank" class="stretched-link">
+    <div class="genz-card" style="
+        --accent-color: {{ color }}; 
+        --accent-color-dim: {{ color }}40;
+        --rec-bg: {{ rec_bg }};     /* Nuova variabile CSS */
+        --rec-text: {{ rec_text }}; /* Nuova variabile CSS */
+    ">
         
-        <div class="card-image-box" style="background-image: url('{{ image_url }}');">
-            <div class="category-pill">
-                <span class="dot"></span>
+        <div class="card-img-top" style="background-image: url('{{ image_url }}');">
+            
+            <div class="card-badge badge-left">
+                <span class="dot-indicator"></span>
                 {{ channel }}
             </div>
             
-            <div class="rec-badge rec-{{ rec }}">
+            <div class="card-badge badge-right" style="background-color: var(--rec-bg); color: var(--rec-text);">
                 {{ rec }}
             </div>
         </div>
 
         <div class="card-body">
-            <div class="card-ticker">{{ ticker }}</div>
-            <div class="card-name">{{ name }}</div>
             
-            <div class="card-summary">
-                {{ summary }}
-            </div>
-
-            {% if show_tech %}
-            <div class="card-footer">
-                <div class="level-col">
-                    <span class="lvl-label">Entry</span>
-                    <span class="lvl-val" style="color: var(--accent-color);">{{ entry }}</span>
-                </div>
-                <div class="level-col" style="text-align: right;">
-                    <span class="lvl-label">Target</span>
-                    <span class="lvl-val">{{ target }}</span>
-                </div>
-            </div>
-            {% endif %}
-        </div>
-    </div>
-</a>
