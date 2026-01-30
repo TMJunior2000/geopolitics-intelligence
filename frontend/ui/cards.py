@@ -44,55 +44,73 @@ def _safe_render_template(template_name, **kwargs):
         return f""
     
 def _render_single_card(row):
-    # 1. Gestione Colore in base al canale (Tabella sources)
-    # Mapping basato sui nomi che hai nel DB
-    channel_name = row.get('source_name', '')
+    """Renderizza la card con data e bottone per espansione dettagli."""
     
-    # Colore default (Blu scuro)
-    accent_color = "#34495e" 
+    # 1. Preparazione Dati (Logica esistente + Colore Canale)
+    style = row.get('channel_style') or 'Fondamentale'
+    raw_rec = row.get('recommendation')
+    rec = str(raw_rec).upper() if raw_rec else 'WATCH'
+    rec_class = _get_badge_class(raw_rec)
+    
+    ticker = row.get('asset_ticker', 'ASSET')
+    name = row.get('asset_name', '')
+    summary = row.get('summary_card') or 'Nessun dettaglio disponibile.'
+    drivers = row.get('key_drivers') or []
+    
+    # Gestione Colore in base al canale (Tabella sources)
+    channel_name = row.get('source_name', 'Analisi')
+    accent_color = "#34495e" # Default
     if "investirebiz" in channel_name.lower():
-        accent_color = "#2ecc71"  # Verde
+        accent_color = "#2ecc71" # Verde
     elif "marketmind" in channel_name.lower():
-        accent_color = "#95a5a6"  # Grigio
+        accent_color = "#95a5a6" # Grigio
 
-    # 2. Formattazione Data sicura
+    # 2. Formattazione Data sicura (Quella che abbiamo approvato)
     raw_date = row.get('published_at')
     display_date = "Data N.D."
-
     if raw_date:
         try:
-            # Se è già un oggetto Timestamp/datetime (Pandas/Supabase lo converte spesso)
             if hasattr(raw_date, 'strftime'):
                 display_date = raw_date.strftime("%d/%m/%Y")
             else:
-                # Se arriva come stringa "2026-01-29 09:41:09+00"
-                # Trasformiamo la stringa in oggetto data per formattarla meglio
                 import pandas as pd
-                temp_date = pd.to_datetime(raw_date)
-                display_date = temp_date.strftime("%d/%m/%Y")
-        except Exception:
-            # Fallback estremo: prendiamo i primi 10 caratteri se tutto fallisce
+                display_date = pd.to_datetime(raw_date).strftime("%d/%m/%Y")
+        except:
             display_date = str(raw_date)[:10]
 
+    # 3. Rendering Visuale
     with st.container(border=True):
-        # Header con Colore e Data
+        
+        # A. Header Custom con Bordo Colorato, Data e Badge
+        # Manteniamo i tuoi badge HTML originali
+        html_badges = _safe_render_template("badges.html", style=style, rec=rec, rec_class=rec_class)
+        st.markdown(html_badges, unsafe_allow_html=True)
+
+        # B. Ticker, Nome e Data (Layout pulito)
         st.markdown(f"""
-            <div style="border-left: 5px solid {accent_color}; padding-left: 10px; margin-bottom: 10px;">
-                <span style="color: #888; font-size: 0.8rem;">📅 {display_date}</span>
-                <h3 style="margin: 0;">{row.get('asset_ticker')}</h3>
+            <div style="border-left: 5px solid {accent_color}; padding-left: 10px; margin: 10px 0;">
+                <small style="color: #888;">📅 {display_date}</small>
+                <h3 style="margin: 0;">{ticker}</h3>
                 <small style="color: {accent_color}; font-weight: bold;">{channel_name}</small>
             </div>
         """, unsafe_allow_html=True)
+        
+        if name:
+            st.caption(name)
+        
+        st.markdown("---")
+        
+        # C. Summary e Drivers (Compatti)
+        st.markdown(f"**Analisi:** {summary}")
+        if isinstance(drivers, list) and drivers:
+            st.markdown("**Key Drivers:**")
+            # HTML custom per rimuovere lo spazio eccessivo tra i punti
+            drivers_html = "".join([f"<li style='margin-bottom: 0px;'>{d}</li>" for d in drivers])
+            st.markdown(f"<ul style='margin-top: -10px; padding-left: 20px; font-size: 0.9rem;'>{drivers_html}</ul>", unsafe_allow_html=True)
 
-        # Drivers compatti (HTML per rimuovere i margini eccessivi di Streamlit)
-        drivers = row.get('key_drivers') or []
-        if drivers:
-            st.markdown("<p style='margin-bottom: 5px;'><b>Key Drivers:</b></p>", unsafe_allow_html=True)
-            drivers_list = "".join([f"<li style='margin-bottom: 0px;'>{d}</li>" for d in drivers])
-            st.markdown(f"<ul style='margin-top: 0px; padding-left: 20px; font-size: 0.9rem;'>{drivers_list}</ul>", unsafe_allow_html=True)
-
-        # Bottone Leggi Tutto (Sostituisce il link video diretto)
-        if st.button("🔍 DETTAGLI COMPLETI", key=f"details_{row['id']}", use_container_width=True):
+        # D. Bottone "Leggi Tutto" (Sostituisce il vecchio link_button)
+        # Usiamo l'ID del database per rendere il bottone univoco
+        if st.button("🔍 DETTAGLI COMPLETI", key=f"expand_{row['id']}", use_container_width=True):
             _show_full_analysis_modal(row)
 
 @st.dialog("Dettaglio Analisi")
