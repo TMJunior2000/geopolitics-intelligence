@@ -69,8 +69,6 @@ st.markdown("<br>", unsafe_allow_html=True)
 target_list = unique_assets if st.session_state.active_filter == "TUTTI" else [st.session_state.active_filter]
 render_grid(df, target_list)
 
-print("TRAGET LIST:", target_list)
-
 # --- FOOTER ---
 st.markdown("---")
 f_col1, f_col2 = st.columns([4,1])
