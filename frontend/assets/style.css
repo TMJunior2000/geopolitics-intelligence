@@ -72,3 +72,29 @@ h1, h2, h3, h4, h5, p, div, span, li {
     font-weight: bold;
     color: #E2E8F0;
 }
+
+/* --- CARD HOVER EFFECT --- */
+
+/* Targetta specificamente i container con border=True.
+   Nota: stVerticalBlockBorderWrapper è il selettore interno di Streamlit 
+   per i container bordati. È il compromesso necessario per la semplicità.
+*/
+div[data-testid="stVerticalBlockBorderWrapper"] > div {
+    transition: all 0.3s ease-in-out;
+    /* Assicurati che il colore di base del bordo sia coerente */
+    border-color: #2D3748; 
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"] > div:hover {
+    /* Sposta la card verso l'alto */
+    transform: translateY(-5px);
+    
+    /* Aggiunge un'ombra luminosa/profonda */
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
+    
+    /* Cambia il colore del bordo (opzionale - qui un indaco acceso) */
+    border-color: #6366f1;
+    
+    /* Assicura che la card in hover stia sopra le altre */
+    z-index: 10;
+}
