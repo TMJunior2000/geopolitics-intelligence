@@ -21,6 +21,7 @@ GLOBAL_STYLES = """
 
 CARD_CSS = """
 <style>
+    body { font-family: 'Inter', sans-serif; background: #0E1117; color: #fff; padding: 10px; margin: 0; }
     .modern-card {
         background: #FFFFFF; border-radius: 20px; padding: 22px;
         display: flex; flex-direction: column; position: relative;
