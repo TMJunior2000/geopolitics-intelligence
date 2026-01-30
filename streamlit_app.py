@@ -1,11 +1,13 @@
 import streamlit as st
 import pandas as pd
 from database.repository import MarketRepository
-from frontend.ui.styles import GLOBAL_STYLES
-from frontend.ui.cards import render_grid  # Nota: importiamo la nuova funzione
+from frontend.ui.styles import load_css  # <-- Importiamo il loader
+from frontend.ui.cards import render_grid
 
 st.set_page_config(page_title="Trading Intel 3.0", layout="wide", page_icon="🧠")
-st.markdown(GLOBAL_STYLES, unsafe_allow_html=True)
+
+# --- CARICAMENTO CSS ESTERNO ---
+load_css()  # <-- Carica frontend/assets/style.css
 
 @st.cache_data(ttl=300)
 def load_data():
@@ -38,7 +40,6 @@ all_assets = ["TUTTI"] + unique_assets
 if 'active_filter' not in st.session_state:
     st.session_state.active_filter = "TUTTI"
 
-# Layout Pulsanti
 buttons_per_row = 8
 for row_idx in range(0, len(all_assets), buttons_per_row):
     row_assets = all_assets[row_idx:row_idx + buttons_per_row]
@@ -47,6 +48,7 @@ for row_idx in range(0, len(all_assets), buttons_per_row):
     for i, asset in enumerate(row_assets):
         with cols[i]:
             is_active = st.session_state.active_filter == asset
+            # I bottoni prenderanno lo stile dal file CSS esterno
             if st.button(asset, key=f"btn_{asset}", 
                         type="primary" if is_active else "secondary",
                         use_container_width=True):
@@ -55,10 +57,8 @@ for row_idx in range(0, len(all_assets), buttons_per_row):
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# --- RENDER NATIVO (SOLUZIONE B) ---
-# Non serve più calcolare altezze o HTML. Streamlit farà il layout automatico.
+# --- RENDER ---
 target_list = unique_assets if st.session_state.active_filter == "TUTTI" else [st.session_state.active_filter]
-
 render_grid(df, target_list)
 
 # --- FOOTER ---

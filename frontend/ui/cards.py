@@ -1,103 +1,112 @@
 import streamlit as st
+import os
+from jinja2 import Template
 
-def _get_badge_html(rec):
+# --- FUNZIONI DI UTILITÀ PER I TEMPLATE ---
+def load_template(filename):
+    """Carica un file HTML dalla cartella templates."""
+    # Costruiamo il percorso assoluto o relativo sicuro
+    path = os.path.join("frontend", "assets", "templates", filename)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return Template(f.read())
+    except FileNotFoundError:
+        st.error(f"⚠️ Template non trovato: {path}")
+        return None
+
+# Carichiamo i template una volta sola all'avvio del modulo per performance
+TEMPLATE_BADGES = load_template("badges.html")
+TEMPLATE_TECH_BOX = load_template("tech_box.html")
+
+def _get_badge_class(rec):
+    """Logica pura Python: decide la classe CSS in base al valore."""
     rec = rec.upper()
     cls_map = {
         "LONG": "badge-long",
         "SHORT": "badge-short",
         "WATCH": "badge-watch"
     }
-    css_class = cls_map.get(rec, "badge-style")
-    return f'<span class="badge {css_class}">{rec}</span>'
+    return cls_map.get(rec, "badge-style")
 
 def _render_single_card(row):
-    """Renderizza una singola card usando componenti nativi Streamlit"""
+    """Renderizza la card iniettando i dati nei template HTML esterni."""
     
-    # Estrazione dati
+    # 1. Preparazione Dati (Logica)
     style = row.get('channel_style', 'Fondamentale')
     rec = str(row.get('recommendation', 'WATCH')).upper()
+    rec_class = _get_badge_class(rec)
+    
     ticker = row.get('asset_ticker', 'ASSET')
     name = row.get('asset_name', '')
     summary = row.get('summary_card', 'Nessun dettaglio disponibile.')
     drivers = row.get('key_drivers', [])
-    video_url = row.get('video_url', '')
+    video_url = row.get('video_url', '#')
 
-    # Container Card con bordo (nativo Streamlit)
+    # Dati Tecnici
+    entry = row.get('entry_zone')
+    target = row.get('target_price')
+    stop = row.get('stop_invalidation')
+    horizon = row.get('time_horizon')
+    
+    # Determina se mostrare il box tecnico
+    show_tech = any([entry, target, stop])
+
+    # 2. Rendering Visuale (Streamlit + HTML Templates)
     with st.container(border=True):
         
-        # 1. Header: Badges
-        badge_html = f"""
-        <div style="margin-bottom: 10px;">
-            <span class="badge badge-style">{style}</span>
-            {_get_badge_html(rec)}
-        </div>
-        """
-        st.markdown(badge_html, unsafe_allow_html=True)
+        # A. Render Badges (usando il template)
+        if TEMPLATE_BADGES:
+            html_badges = TEMPLATE_BADGES.render(
+                style=style, 
+                rec=rec, 
+                rec_class=rec_class
+            )
+            st.markdown(html_badges, unsafe_allow_html=True)
 
-        # 2. Ticker e Nome
+        # B. Ticker e Nome (Nativo Streamlit)
         st.markdown(f"### {ticker}")
         if name:
             st.caption(name)
         
-        # 3. Summary
-        # Usiamo un divisore visivo leggero
         st.markdown("---")
+        
+        # C. Summary e Drivers (Nativo Streamlit)
         st.markdown(f"**Analisi:** {summary}")
-
-        # 4. Drivers
         if drivers:
             st.markdown("**Key Drivers:**")
             for driver in drivers:
                 st.markdown(f"- {driver}")
 
-        # 5. Technical Levels (Renderizzato solo se esistono dati)
-        entry = row.get('entry_zone')
-        target = row.get('target_price')
-        stop = row.get('stop_invalidation')
-        horizon = row.get('time_horizon')
+        # D. Render Tech Box (usando il template solo se serve)
+        if show_tech and TEMPLATE_TECH_BOX:
+            html_tech = TEMPLATE_TECH_BOX.render(
+                entry=entry or '-',
+                target=target or '-',
+                stop=stop or '-',
+                horizon=horizon or '-'
+            )
+            st.markdown(html_tech, unsafe_allow_html=True)
 
-        if any([entry, target, stop]):
-            st.markdown(f"""
-            <div class="tech-box">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                    <div><div class="tech-label">ENTRY</div><div class="tech-val">{entry or '-'}</div></div>
-                    <div><div class="tech-label">TARGET</div><div class="tech-val">{target or '-'}</div></div>
-                </div>
-                <div style="display: flex; justify-content: space-between;">
-                    <div><div class="tech-label">STOP</div><div class="tech-val">{stop or '-'}</div></div>
-                    <div><div class="tech-label">HORIZON</div><div class="tech-val">{horizon or '-'}</div></div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-        # 6. Button
+        # E. Bottone (Nativo Streamlit)
         if video_url and video_url != '#':
-            st.markdown("") # Spacer
-            st.link_button("📺 VEDI ANALISI COMPLETA", video_url, use_container_width=True)
+            st.markdown("") 
+            st.link_button("📺 VEDI ANALISI", video_url, use_container_width=True)
 
 
 def render_grid(df, assets_to_show):
-    """
-    Gestisce la griglia responsiva nativa.
-    """
-    # Ordiniamo per data decrescente
+    """Funzione principale chiamata dalla dashboard"""
     if not df.empty and 'published_at' in df.columns:
         df = df.sort_values(by='published_at', ascending=False)
     
     for asset in assets_to_show:
         asset_df = df[df['asset_ticker'] == asset]
-        if asset_df.empty:
-            continue
+        if asset_df.empty: continue
         
-        # Titolo Sezione Asset
         st.markdown(f"### 💎 {asset}")
         st.markdown("---")
         
-        # Griglia 3 colonne
         cols = st.columns(3)
-        
         for idx, (_, row) in enumerate(asset_df.iterrows()):
-            # Modulo 3 per distribuire le card nelle colonne ciclicamente
             with cols[idx % 3]:
                 _render_single_card(row)
         
