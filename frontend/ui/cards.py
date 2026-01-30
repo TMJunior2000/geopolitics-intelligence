@@ -42,67 +42,62 @@ def _safe_render_template(template_name, **kwargs):
     except Exception as e:
         # In sviluppo mostra l'errore, in prod potresti volerlo nascondere
         return f""
-
+    
 def _render_single_card(row):
-    """Renderizza la card iniettando i dati nei template HTML esterni."""
+    # 1. Gestione Colore in base al canale (Tabella sources)
+    # Mapping basato sui nomi che hai nel DB
+    channel_name = row.get('source_name', '')
     
-    # 1. Preparazione Dati (Gestione robusta di None)
-    style = row.get('channel_style') or 'Fondamentale'
-    raw_rec = row.get('recommendation')
-    rec = str(raw_rec).upper() if raw_rec else 'WATCH'
-    rec_class = _get_badge_class(raw_rec)
-    
-    ticker = row.get('asset_ticker', 'ASSET')
-    name = row.get('asset_name', '')
-    summary = row.get('summary_card') or 'Nessun dettaglio disponibile.'
-    drivers = row.get('key_drivers') or [] # Assicura che sia una lista
-    video_url = row.get('video_url', '#')
+    # Colore default (Blu scuro)
+    accent_color = "#34495e" 
+    if "investirebiz" in channel_name.lower():
+        accent_color = "#2ecc71"  # Verde
+    elif "marketmind" in channel_name.lower():
+        accent_color = "#95a5a6"  # Grigio
 
-    # Dati Tecnici
-    entry = row.get('entry_zone')
-    target = row.get('target_price')
-    stop = row.get('stop_invalidation')
-    horizon = row.get('time_horizon')
-    
-    # Determina se mostrare il box tecnico
-    show_tech = any([entry, target, stop])
+    # 2. Formattazione Data (published_at da intelligence_feed)
+    raw_date = row.get('published_at')
+    # Se raw_date è stringa, convertirla (Streamlit/Pandas lo fa spesso in automatico)
+    display_date = raw_date[:10] if raw_date else "Data N.D."
 
-    # 2. Rendering Visuale
     with st.container(border=True):
-        
-        # A. Render Badges (Safe Jinja)
-        html_badges = _safe_render_template("badges.html", style=style, rec=rec, rec_class=rec_class)
-        st.markdown(html_badges, unsafe_allow_html=True)
+        # Header con Colore e Data
+        st.markdown(f"""
+            <div style="border-left: 5px solid {accent_color}; padding-left: 10px; margin-bottom: 10px;">
+                <span style="color: #888; font-size: 0.8rem;">📅 {display_date}</span>
+                <h3 style="margin: 0;">{row.get('asset_ticker')}</h3>
+                <small style="color: {accent_color}; font-weight: bold;">{channel_name}</small>
+            </div>
+        """, unsafe_allow_html=True)
 
-        # B. Ticker e Nome
-        st.markdown(f"### {ticker}")
-        if name:
-            st.caption(name)
-        
-        st.markdown("---")
-        
-        # C. Summary e Drivers
-        st.markdown(f"**Analisi:** {summary}")
-        if isinstance(drivers, list) and drivers:
-            st.markdown("**Key Drivers:**")
-            for driver in drivers:
-                st.markdown(f"- {driver}")
+        # Drivers compatti (HTML per rimuovere i margini eccessivi di Streamlit)
+        drivers = row.get('key_drivers') or []
+        if drivers:
+            st.markdown("<p style='margin-bottom: 5px;'><b>Key Drivers:</b></p>", unsafe_allow_html=True)
+            drivers_list = "".join([f"<li style='margin-bottom: 0px;'>{d}</li>" for d in drivers])
+            st.markdown(f"<ul style='margin-top: 0px; padding-left: 20px; font-size: 0.9rem;'>{drivers_list}</ul>", unsafe_allow_html=True)
 
-        # D. Render Tech Box
-        if show_tech:
-            html_tech = _safe_render_template("tech_box.html",
-                entry=entry or '-',
-                target=target or '-',
-                stop=stop or '-',
-                horizon=horizon or '-'
-            )
-            st.markdown(html_tech, unsafe_allow_html=True)
+        # Bottone Leggi Tutto (Sostituisce il link video diretto)
+        if st.button("🔍 DETTAGLI COMPLETI", key=f"details_{row['id']}", use_container_width=True):
+            _show_full_analysis_modal(row)
 
-        # E. Bottone
-        if video_url and str(video_url).strip() != '#' and str(video_url).startswith('http'):
-            st.markdown("") 
-            st.link_button("📺 VEDI ANALISI", video_url, use_container_width=True)
+@st.dialog("Dettaglio Analisi")
+def _show_full_analysis_modal(row):
+    st.subheader(f"{row['asset_ticker']} - {row.get('asset_name', '')}")
+    st.info(f"Fonte: {row.get('source_name')} | Pubblicato il: {row.get('published_at')}")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Sentiment", row.get('sentiment'))
+    with col2:
+        st.metric("Recommendation", row.get('recommendation'))
 
+    st.markdown("### 📝 Analisi Completa")
+    # Qui usiamo 'video_summary' che è il testo lungo della tabella intelligence_feed
+    st.write(row.get('video_summary') or row.get('summary_card'))
+    
+    if row.get('video_url'):
+        st.link_button("📺 Guarda Video Originale", row['video_url'])
 
 def render_grid(df, assets_to_show):
     """Funzione principale chiamata dalla dashboard"""

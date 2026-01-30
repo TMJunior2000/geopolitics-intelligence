@@ -120,7 +120,7 @@ class MarketRepository:
     def get_all_insights_flat(self) -> List[Dict[str, Any]]:
         try:
             response = self.client.table("market_insights")\
-                .select("*, intelligence_feed(title, published_at, url, source_id, summary, macro_sentiment)")\
+                .select("*, intelligence_feed(*, sources(name))")\
                 .order("created_at", desc=True)\
                 .execute()
             
@@ -128,11 +128,16 @@ class MarketRepository:
             for item in (response.data or []):
                 item = cast(Dict[str, Any], item)
                 feed = item.pop('intelligence_feed', {}) or {}
+                source = feed.get('sources', {}) or {}
+                
+                # Mapping dei dati piatti
+                item['source_name'] = source.get('name', 'Unknown')
                 item['video_title'] = feed.get('title')
                 item['published_at'] = feed.get('published_at')
                 item['video_url'] = feed.get('url')
                 item['video_summary'] = feed.get('summary')
                 item['video_macro'] = feed.get('macro_sentiment')
+                
                 flat_data.append(item)
             return flat_data
         except Exception as e:
