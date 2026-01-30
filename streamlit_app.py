@@ -59,7 +59,7 @@ dynamic_height = max(800, rows * 550)
 components.html(
     f"<html><head>{CARD_CSS}</head><body>{html_cards}</body></html>",
     height=dynamic_height, 
-    scrolling=False
+    scrolling=True
 )
 
 # --- FOOTER ---
