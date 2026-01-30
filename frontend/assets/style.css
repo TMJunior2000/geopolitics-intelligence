@@ -1,122 +1,129 @@
-/* --- GLOBAL FONTS & RESET --- */
-@import url('https://fonts.googleapis.com/css2?family=Helvetica+Neue:wght@400;700&family=Roboto:wght@400;500;700&display=swap');
-
-.stApp {
-    background-color: #f4f4f4; /* Sfondo chiaro come il sito */
-    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+/* --- Reset e Font Base --- */
+body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; /* Font pulito e moderno */
+    background-color: #f4f4f4; /* Sfondo pagina leggero */
+    margin: 0;
+    padding: 0;
     color: #333;
 }
 
-/* --- CARD STYLE (Replica Worldy) --- */
+a {
+    text-decoration: none;
+    color: inherit;
+}
+
+/* --- Layout Generale --- */
+.home-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* --- La Griglia (Grid System) --- */
+/* Replica la classe .grid del tuo HTML */
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); /* Crea colonne responsive */
+    gap: 20px; /* Spazio tra le card */
+    margin-bottom: 40px;
+}
+
+/* --- Stile della Card (.box) --- */
 .box {
     background: white;
     border-radius: 8px;
     overflow: hidden;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05); /* Ombra leggera */
+    transition: transform 0.2s ease;
     display: flex;
     flex-direction: column;
-    height: 100%; /* Uniforma altezza */
-    border: 1px solid #e0e0e0;
 }
 
 .box:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+    transform: translateY(-5px); /* Effetto sollevamento al mouse */
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
 }
 
-/* --- COPERTINA --- */
+/* --- Immagine di Copertina (.box-cover) --- */
 .box-cover {
     width: 100%;
-    padding-top: 56.25%; /* Aspect Ratio 16:9 */
+    height: 200px; /* Altezza fissa per uniformità */
     position: relative;
+}
+
+.box-cover .cover {
+    width: 100%;
+    height: 100%;
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
-    background-color: #ddd; /* Fallback se manca immagine */
 }
 
-/* --- BADGES SULLA COVER --- */
-.c-info {
-    position: absolute;
-    top: 10px;
-    left: 10px;
-}
-
-.category-badge {
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    color: white;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-}
-.badge-long { background-color: #16a34a; }
-.badge-short { background-color: #dc2626; }
-.badge-watch { background-color: #ca8a04; }
-
-/* --- CONTENUTO TESTUALE --- */
+/* --- Contenuto Testuale (.text) --- */
 .text {
     padding: 20px;
     display: flex;
     flex-direction: column;
-    flex-grow: 1;
     justify-content: space-between;
+    height: 100%;
 }
 
-/* Categoria (es. FINANCE) */
-.category.finance {
-    display: block;
-    color: #0056b3; /* Blu Worldy */
+/* --- Categorie (.category) --- */
+.c-title .category {
+    display: inline-block;
     font-size: 0.75rem;
-    font-weight: 700;
     text-transform: uppercase;
-    margin-bottom: 8px;
+    font-weight: 700;
+    margin-bottom: 10px;
     letter-spacing: 0.5px;
 }
 
-/* Titolo */
-.title {
+/* Colore specifico per la categoria Finance */
+.category.finance {
+    color: #0056b3; /* Blu/Azzurro istituzionale */
+}
+
+/* --- Titolo (.title) --- */
+.c-title .title {
     display: block;
     font-size: 1.1rem;
-    line-height: 1.5;
-    color: #1a1a1a !important;
-    text-decoration: none;
+    line-height: 1.4;
+    font-weight: 400; /* Il peso normale, il grassetto lo diamo agli span */
+    color: #1a1a1a;
     margin-bottom: 15px;
-    font-weight: 400;
 }
 
-.title:hover {
-    color: #0056b3 !important;
-}
-
-/* Grassetto personalizzato (la classe chiave) */
+/* --- Parole Chiave in Grassetto (.bold-finance) --- */
+/* Questo è fondamentale per replicare lo stile "Worldy" */
 .bold-finance {
     font-weight: 700;
-    color: #000;
+    color: #000; /* O un colore d'accento se preferisci */
 }
 
-/* --- FOOTER CARD --- */
-.meta-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-top: 1px solid #f0f0f0;
-    padding-top: 12px;
-    margin-top: auto;
-}
-
+/* --- Data (.date) --- */
 .date {
-    font-size: 0.75rem;
-    color: #999;
+    font-size: 0.8rem;
+    color: #888;
+    margin-top: auto; /* Spinge la data in fondo alla card */
 }
 
-.tech-pill {
-    font-size: 0.7rem;
-    background: #f1f5f9;
-    padding: 2px 6px;
-    border-radius: 4px;
-    color: #64748b;
+/* --- Navigazione Categorie (Header) --- */
+.box-category {
+    display: flex;
+    gap: 15px;
+    padding: 15px 0;
+    overflow-x: auto; /* Permette lo scroll su mobile */
+    border-bottom: 1px solid #e0e0e0;
+    margin-bottom: 20px;
+}
+
+.secondary-category {
+    font-size: 0.9rem;
     font-weight: 600;
+    color: #555;
+    white-space: nowrap;
+}
+
+.secondary-category:hover {
+    color: #0056b3;
 }
