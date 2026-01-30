@@ -56,9 +56,6 @@ for row_idx in range(0, len(all_assets), buttons_per_row):
     
     for i, asset in enumerate(row_assets):
         with cols[i]:
-            # Nota: Streamlit non supporta stili condizionali completi sui bottoni nativi facilmente
-            # ma il CSS targetta tutti i bottoni. Per evidenziare l'attivo servirebbe un componente custom 
-            # o accettare lo stile "primary" standard di Streamlit.
             is_active = st.session_state.active_filter == asset
             if st.button(asset, key=f"btn_{asset}", 
                         type="primary" if is_active else "secondary",
@@ -71,6 +68,8 @@ st.markdown("<br>", unsafe_allow_html=True)
 # --- RENDER ---
 target_list = unique_assets if st.session_state.active_filter == "TUTTI" else [st.session_state.active_filter]
 render_grid(df, target_list)
+
+print("TRAGET LIST:", target_list)
 
 # --- FOOTER ---
 st.markdown("---")
