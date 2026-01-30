@@ -1,129 +1,74 @@
-/* --- Reset e Font Base --- */
-body {
-    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; /* Font pulito e moderno */
-    background-color: #f4f4f4; /* Sfondo pagina leggero */
-    margin: 0;
-    padding: 0;
-    color: #333;
+/* --- FONTS --- */
+/* Aggiunto font-display: swap per evitare testo invisibile durante il caricamento */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Inter:wght@400;500;600&display=swap');
+
+/* --- GLOBAL STYLES --- */
+.stApp {
+    background-color: #0E1117;
 }
 
-a {
-    text-decoration: none;
-    color: inherit;
+/* Fallback fonts di sistema per robustezza */
+h1, h2, h3, h4, h5, p, div, span, li {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-/* --- Layout Generale --- */
-.home-container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 20px;
-}
-
-/* --- La Griglia (Grid System) --- */
-/* Replica la classe .grid del tuo HTML */
-.grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); /* Crea colonne responsive */
-    gap: 20px; /* Spazio tra le card */
-    margin-bottom: 40px;
-}
-
-/* --- Stile della Card (.box) --- */
-.box {
-    background: white;
+/* --- BUTTON STYLING (SAFE) --- */
+/* Usiamo le classi stabili di Streamlit invece di selettori interni fragili */
+.stButton > button {
+    width: 100%;
     border-radius: 8px;
-    overflow: hidden;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.05); /* Ombra leggera */
-    transition: transform 0.2s ease;
-    display: flex;
-    flex-direction: column;
-}
-
-.box:hover {
-    transform: translateY(-5px); /* Effetto sollevamento al mouse */
-    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-}
-
-/* --- Immagine di Copertina (.box-cover) --- */
-.box-cover {
-    width: 100%;
-    height: 200px; /* Altezza fissa per uniformità */
-    position: relative;
-}
-
-.box-cover .cover {
-    width: 100%;
-    height: 100%;
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-}
-
-/* --- Contenuto Testuale (.text) --- */
-.text {
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    height: 100%;
-}
-
-/* --- Categorie (.category) --- */
-.c-title .category {
-    display: inline-block;
-    font-size: 0.75rem;
-    text-transform: uppercase;
+    font-family: 'Space Grotesk', sans-serif;
     font-weight: 700;
-    margin-bottom: 10px;
+    border: none;
+    transition: all 0.2s ease-in-out;
+}
+
+.stButton > button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+/* --- CUSTOM BADGES --- */
+.badge {
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+    display: inline-block;
+    margin-right: 8px;
+}
+
+/* Colori invariati */
+.badge-long { background: #DCFCE7; color: #166534; border: 1px solid #bbf7d0; }
+.badge-short { background: #FEE2E2; color: #991B1B; border: 1px solid #fecaca; }
+.badge-watch { background: #FEF9C3; color: #854d0e; border: 1px solid #fef08a; }
+.badge-style { background: #F1F5F9; color: #475569; border: 1px solid #e2e8f0; }
+
+/* --- TECHNICAL BOX --- */
+.tech-box {
+    background-color: #1E232F;
+    border-radius: 8px;
+    padding: 12px;
+    margin-top: 10px;
+    border: 1px solid #2D3748;
+}
+
+.tech-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+}
+
+.tech-label {
+    font-size: 10px;
+    color: #A0AEC0;
+    text-transform: uppercase;
     letter-spacing: 0.5px;
 }
 
-/* Colore specifico per la categoria Finance */
-.category.finance {
-    color: #0056b3; /* Blu/Azzurro istituzionale */
-}
-
-/* --- Titolo (.title) --- */
-.c-title .title {
-    display: block;
-    font-size: 1.1rem;
-    line-height: 1.4;
-    font-weight: 400; /* Il peso normale, il grassetto lo diamo agli span */
-    color: #1a1a1a;
-    margin-bottom: 15px;
-}
-
-/* --- Parole Chiave in Grassetto (.bold-finance) --- */
-/* Questo è fondamentale per replicare lo stile "Worldy" */
-.bold-finance {
-    font-weight: 700;
-    color: #000; /* O un colore d'accento se preferisci */
-}
-
-/* --- Data (.date) --- */
-.date {
-    font-size: 0.8rem;
-    color: #888;
-    margin-top: auto; /* Spinge la data in fondo alla card */
-}
-
-/* --- Navigazione Categorie (Header) --- */
-.box-category {
-    display: flex;
-    gap: 15px;
-    padding: 15px 0;
-    overflow-x: auto; /* Permette lo scroll su mobile */
-    border-bottom: 1px solid #e0e0e0;
-    margin-bottom: 20px;
-}
-
-.secondary-category {
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: #555;
-    white-space: nowrap;
-}
-
-.secondary-category:hover {
-    color: #0056b3;
+.tech-val {
+    font-size: 14px;
+    font-weight: bold;
+    color: #E2E8F0;
 }
