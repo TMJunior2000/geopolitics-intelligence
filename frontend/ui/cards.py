@@ -1,64 +1,104 @@
-import html
+import streamlit as st
 
-def _generate_single_card(row):
+def _get_badge_html(rec):
+    rec = rec.upper()
+    cls_map = {
+        "LONG": "badge-long",
+        "SHORT": "badge-short",
+        "WATCH": "badge-watch"
+    }
+    css_class = cls_map.get(rec, "badge-style")
+    return f'<span class="badge {css_class}">{rec}</span>'
+
+def _render_single_card(row):
+    """Renderizza una singola card usando componenti nativi Streamlit"""
+    
+    # Estrazione dati
     style = row.get('channel_style', 'Fondamentale')
     rec = str(row.get('recommendation', 'WATCH')).upper()
-    ticker = html.escape(str(row.get('asset_ticker', 'ASSET')))
-    name = html.escape(str(row.get('asset_name', '')))
-    summary = html.escape(str(row.get('summary_card', 'Nessun dettaglio disponibile.')))
-    
-    # CSS Classes
-    rec_cls = f"rec-{rec.lower()}"
-    
-    # Drivers list conversion
+    ticker = row.get('asset_ticker', 'ASSET')
+    name = row.get('asset_name', '')
+    summary = row.get('summary_card', 'Nessun dettaglio disponibile.')
     drivers = row.get('key_drivers', [])
-    drivers_html = "".join([f"<li>{html.escape(d)}</li>" for d in drivers])
+    video_url = row.get('video_url', '')
 
-    # Technical Levels Box (show only if data exists)
-    levels_html = ""
-    if any([row.get('entry_zone'), row.get('target_price'), row.get('stop_invalidation')]):
-        levels_html = f"""
-        <div class="levels-box">
-            <div class="level-item">ENTRY <span class="level-val">{row.get('entry_zone') or 'N/A'}</span></div>
-            <div class="level-item">TARGET <span class="level-val">{row.get('target_price') or 'N/A'}</span></div>
-            <div class="level-item">STOP <span class="level-val">{row.get('stop_invalidation') or 'N/A'}</span></div>
-            <div class="level-item">HORIZON <span class="level-val">{row.get('time_horizon') or 'N/A'}</span></div>
+    # Container Card con bordo (nativo Streamlit)
+    with st.container(border=True):
+        
+        # 1. Header: Badges
+        badge_html = f"""
+        <div style="margin-bottom: 10px;">
+            <span class="badge badge-style">{style}</span>
+            {_get_badge_html(rec)}
         </div>
         """
+        st.markdown(badge_html, unsafe_allow_html=True)
 
-    return f"""
-    <div class="modern-card">
-        <div class="card-header">
-            <span class="tag tag-style">{style}</span>
-            <span class="tag {rec_cls}">{rec}</span>
-        </div>
-        <div class="card-ticker">{ticker}</div>
-        <div class="card-name">{name}</div>
+        # 2. Ticker e Nome
+        st.markdown(f"### {ticker}")
+        if name:
+            st.caption(name)
         
-        <div class="summary-text">{summary}</div>
-        
-        <ul class="drivers-list">
-            {drivers_html}
-        </ul>
+        # 3. Summary
+        # Usiamo un divisore visivo leggero
+        st.markdown("---")
+        st.markdown(f"**Analisi:** {summary}")
 
-        {levels_html}
+        # 4. Drivers
+        if drivers:
+            st.markdown("**Key Drivers:**")
+            for driver in drivers:
+                st.markdown(f"- {driver}")
 
-        <a href="{row.get('video_url', '#')}" target="_blank" class="cta-button">ANALYSIS SOURCE</a>
-    </div>
+        # 5. Technical Levels (Renderizzato solo se esistono dati)
+        entry = row.get('entry_zone')
+        target = row.get('target_price')
+        stop = row.get('stop_invalidation')
+        horizon = row.get('time_horizon')
+
+        if any([entry, target, stop]):
+            st.markdown(f"""
+            <div class="tech-box">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <div><div class="tech-label">ENTRY</div><div class="tech-val">{entry or '-'}</div></div>
+                    <div><div class="tech-label">TARGET</div><div class="tech-val">{target or '-'}</div></div>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <div><div class="tech-label">STOP</div><div class="tech-val">{stop or '-'}</div></div>
+                    <div><div class="tech-label">HORIZON</div><div class="tech-val">{horizon or '-'}</div></div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # 6. Button
+        if video_url and video_url != '#':
+            st.markdown("") # Spacer
+            st.link_button("📺 VEDI ANALISI COMPLETA", video_url, use_container_width=True)
+
+
+def render_grid(df, assets_to_show):
     """
-
-def generate_grid_html(df, assets_to_show):
-    html_out = []
+    Gestisce la griglia responsiva nativa.
+    """
     # Ordiniamo per data decrescente
-    df = df.sort_values(by='published_at', ascending=False)
+    if not df.empty and 'published_at' in df.columns:
+        df = df.sort_values(by='published_at', ascending=False)
     
     for asset in assets_to_show:
         asset_df = df[df['asset_ticker'] == asset]
-        if asset_df.empty: continue
+        if asset_df.empty:
+            continue
         
-        html_out.append(f'<div class="asset-header">💎 {asset}</div>')
-        html_out.append('<div class="cards-grid">')
-        for _, row in asset_df.iterrows():
-            html_out.append(_generate_single_card(row))
-        html_out.append('</div>')
-    return "".join(html_out)
+        # Titolo Sezione Asset
+        st.markdown(f"### 💎 {asset}")
+        st.markdown("---")
+        
+        # Griglia 3 colonne
+        cols = st.columns(3)
+        
+        for idx, (_, row) in enumerate(asset_df.iterrows()):
+            # Modulo 3 per distribuire le card nelle colonne ciclicamente
+            with cols[idx % 3]:
+                _render_single_card(row)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
