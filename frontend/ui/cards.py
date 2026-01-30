@@ -55,10 +55,24 @@ def _render_single_card(row):
     elif "marketmind" in channel_name.lower():
         accent_color = "#95a5a6"  # Grigio
 
-    # 2. Formattazione Data (published_at da intelligence_feed)
+    # 2. Formattazione Data sicura
     raw_date = row.get('published_at')
-    # Se raw_date è stringa, convertirla (Streamlit/Pandas lo fa spesso in automatico)
-    display_date = raw_date[:10] if raw_date else "Data N.D."
+    display_date = "Data N.D."
+
+    if raw_date:
+        try:
+            # Se è già un oggetto Timestamp/datetime (Pandas/Supabase lo converte spesso)
+            if hasattr(raw_date, 'strftime'):
+                display_date = raw_date.strftime("%d/%m/%Y")
+            else:
+                # Se arriva come stringa "2026-01-29 09:41:09+00"
+                # Trasformiamo la stringa in oggetto data per formattarla meglio
+                import pandas as pd
+                temp_date = pd.to_datetime(raw_date)
+                display_date = temp_date.strftime("%d/%m/%Y")
+        except Exception:
+            # Fallback estremo: prendiamo i primi 10 caratteri se tutto fallisce
+            display_date = str(raw_date)[:10]
 
     with st.container(border=True):
         # Header con Colore e Data
