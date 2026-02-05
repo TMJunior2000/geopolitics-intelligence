@@ -109,7 +109,6 @@ def render_trump_section(df):
     # Raggruppiamo per URL (o content se url manca) per unire gli asset
     # Aggreghiamo 'asset_ticker' in una lista e prendiamo il max di 'impact_score'
     grouped_df = trump_df.groupby('video_url', as_index=False).agg({
-        'content': 'first',           # Il testo è lo stesso
         'summary_card': 'first',      # Il riassunto è lo stesso
         'created_at': 'first',        # La data è la stessa
         'asset_ticker': list,         # <--- QUI UNIAMO I TICKER IN UNA LISTA
