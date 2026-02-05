@@ -10,6 +10,9 @@ def _generate_html_card(row, card_type="VIDEO"):
     ticker = row.get('asset_ticker', 'N/A')
     summary = row.get('summary_card') or row.get('video_summary') or "Nessuna descrizione disponibile."
     
+    # Pulizia testo per evitare rotture dell'HTML (virgolette)
+    summary = str(summary).replace('"', '&quot;')
+    
     # Gestione Data
     try:
         raw_date = row.get('published_at') or row.get('created_at')
@@ -22,19 +25,23 @@ def _generate_html_card(row, card_type="VIDEO"):
         badge_text = "TRUMP WATCH"
         badge_class = "badge-trump"
         cover_class = "cover-trump"
-        # Per Trump usiamo il summary breve o il testo del post troncato
         display_title = summary[:120] + "..." if len(summary) > 120 else summary
-        footer_info = f"IMPACT SCORE: {row.get('impact_score', 0)}/5"
-        score_color = "#E74C3C" if row.get('impact_score', 0) >= 4 else "#F1C40F"
+        
+        score = row.get('impact_score', 0)
+        footer_info = f"IMPACT SCORE: {score}/5"
+        score_color = "#E74C3C" if score >= 4 else "#F1C40F"
     else:
         badge_text = row.get('channel_style', 'ANALYSIS')
         badge_class = "badge-video"
         cover_class = "cover-video"
-        display_title = row.get('video_title') or row.get('asset_name') or ticker
+        
+        raw_title = row.get('video_title') or row.get('asset_name') or ticker
+        display_title = str(raw_title).replace('"', '&quot;')
+        
         footer_info = f"{row.get('sentiment', 'NEUTRAL')} | {row.get('recommendation', 'WATCH')}"
         score_color = "#2ECC71"
 
-    # HTML Template
+    # HTML Template COMPATTATO (Senza spazi all'inizio delle righe)
     html = f"""
     <div class="w-card">
         <div class="w-cover {cover_class}">
@@ -53,7 +60,7 @@ def _generate_html_card(row, card_type="VIDEO"):
         </div>
     </div>
     """
-    return html
+    return html.strip() # .strip() rimuove spazi vuoti inizio/fine stringa
 
 def render_trump_section(df):
     """Renderizza la sezione orizzontale/griglia per Trump"""
