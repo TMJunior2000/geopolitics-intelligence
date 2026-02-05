@@ -55,7 +55,7 @@ jobs:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }} 
           
           # Il codice Python cerca APIFY_API_TOKEN, gli passiamo il tuo secret APIFY
-          APIFY_API_TOKEN: ${{ secrets.API_APIFY }}
+          APIFY_TOKEN: ${{ secrets.API_APIFY }}
           
         # Esegue lo script passando la modalità come argomento
         run: python main_worker.py ${{ inputs.mode || 'LIVE' }}
