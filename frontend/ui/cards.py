@@ -1,92 +1,74 @@
 import streamlit as st
 import pandas as pd
-import re
-
-# --- UTILS ---
-def _get_youtube_thumbnail(url):
-    """Estrae la thumbnail HQ da un URL YouTube."""
-    if not url: return None
-    video_id_match = re.search(r'(?:v=|\/)([0-9A-Za-z_-]{11}).*', str(url))
-    if video_id_match:
-        return f"https://img.youtube.com/vi/{video_id_match.group(1)}/hqdefault.jpg"
-    return None
 
 def _generate_html_card(row, card_type="VIDEO"):
     """
-    Genera l'HTML puro della card Worldy-Style.
-    Gestisce liste di ticker e sfondi dinamici.
+    Genera l'HTML puro. Supporta il raggruppamento di più asset nella stessa card.
     """
-    
-    # 1. Gestione Ticker Multipli o Singoli
+    # --- GESTIONE DUPLICATI / LISTE ---
+    # Se 'asset_ticker' è una lista (perché abbiamo raggruppato), la usiamo.
+    # Altrimenti la trasformiamo in lista.
     tickers = row.get('asset_ticker')
-    if not isinstance(tickers, list): 
+    if not isinstance(tickers, list):
         tickers = [tickers] if tickers else []
     
-    # Pulizia: rimuovi None e duplicati, ordina
-    tickers = sorted(list(set([str(t) for t in tickers if t])))
+    # Rimuovi duplicati e valori nulli
+    tickers = sorted(list(set([t for t in tickers if t])))
     
-    # Creazione Badge HTML per i ticker
+    # Generiamo l'HTML per i badge dei ticker
     tickers_html = ""
     for t in tickers:
         tickers_html += f'<span class="ticker-badge">{t}</span>'
 
-    # 2. Dati Testuali e Pulizia
+    # --- DATI BASE ---
     summary = row.get('summary_card') or row.get('video_summary') or "Nessuna descrizione."
-    # Escape delle virgolette per non rompere l'HTML
     summary = str(summary).replace('"', '&quot;')
     
-    # 3. Gestione Data (Solo Published At)
+    # Data
     try:
-        raw_date = row.get('published_at')
+        raw_date = row.get('published_at') or row.get('created_at')
+        # Se è una serie (dal groupby), prendiamo il primo valore
         if isinstance(raw_date, pd.Series): raw_date = raw_date.iloc[0]
-        
-        if pd.isna(raw_date):
-            date_str = "N.D."
-        else:
-            date_str = pd.to_datetime(raw_date).strftime("%d %b")
+        date_str = pd.to_datetime(raw_date).strftime("%d %b %Y")
     except:
-        date_str = "N.D."
+        date_str = "OGGI"
 
-    # 4. Stili e Sfondi
+    # --- LOGICA VISIVA ---
     bg_style = ""
     if card_type == "TRUMP":
         badge_text = "TRUMP WATCH"
         badge_class = "badge-trump"
-        # Gradiente "Presidential"
         bg_style = "background: linear-gradient(135deg, #002D72 0%, #C8102E 100%);"
         
-        # Titolo corto per Trump
-        display_title = summary[:110] + "..." if len(summary) > 110 else summary
+        display_title = summary[:120] + "..." if len(summary) > 120 else summary
         
+        # Gestione Score (se raggruppato, prendiamo il massimo)
         score = row.get('impact_score', 0)
-        if isinstance(score, (list, pd.Series)): score = max(score)
+        if isinstance(score, pd.Series) or isinstance(score, list):
+            score = max(score)
+            
         footer_info = f"IMPACT: {score}/5"
         score_color = "#E74C3C" if score >= 4 else "#F1C40F"
         
     else: # VIDEO
         badge_text = row.get('channel_style', 'ANALYSIS')
-        if isinstance(badge_text, pd.Series): badge_text = badge_text.iloc[0]
+        if isinstance(badge_text, pd.Series): badge_text = badge_text.iloc[0] # Fix groupby
         badge_class = "badge-video"
         
-        video_url = row.get('video_url') or row.get('url')
+        # Thumbnail
+        video_url = row.get('video_url')
         if isinstance(video_url, pd.Series): video_url = video_url.iloc[0]
         
-        # Recupera Thumbnail reale o usa gradiente tech
-        thumb_url = _get_youtube_thumbnail(video_url)
-        if thumb_url:
-            bg_style = f"background-image: url('{thumb_url}');"
-        else:
-            bg_style = "background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);"
-
+        bg_style = "background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);"
         raw_title = row.get('video_title') or row.get('asset_name')
         if isinstance(raw_title, pd.Series): raw_title = raw_title.iloc[0]
         display_title = str(raw_title).replace('"', '&quot;')
         
-        footer_info = "WATCH"
+        footer_info = "WATCH" # Semplificato per layout raggruppato
         score_color = "#2ECC71"
 
-    # 5. Output HTML
-    return f"""
+    # HTML TEMPLATE
+    html = f"""
     <div class="w-card">
         <div class="w-cover" style="{bg_style}">
             <div class="w-badge {badge_class}">{badge_text}</div>
@@ -104,116 +86,67 @@ def _generate_html_card(row, card_type="VIDEO"):
             </div>
         </div>
     </div>
-    """.strip()
-
-# --- RENDERERS DI SEZIONE ---
-
-def render_todays_briefing(df):
-    """Mostra una griglia mista (Trump + Video) solo per oggi."""
-    
-    cards_html = ""
-    
-    # 1. Trump Cards di Oggi (Raggruppate)
-    trump_df = df[df['feed_type'] == 'SOCIAL_POST'].copy()
-    if not trump_df.empty:
-        # Grouping Dinamico
-        if 'url' in trump_df.columns: grp = 'url'
-        elif 'video_id' in trump_df.columns: grp = 'video_id'
-        else: grp = 'summary_card'
-        
-        # Regole di aggregazione sicure
-        agg_cols = {
-            'content':'first', 'summary_card':'first', 'published_at':'first', 
-            'asset_ticker':list, 'impact_score':'max', 'feed_type':'first', 
-            'source_name':'first', 'url':'first', 'video_url': 'first'
-        }
-        final_agg = {k:v for k,v in agg_cols.items() if k in trump_df.columns}
-        
-        try:
-            t_grouped = trump_df.groupby(grp, as_index=False).agg(final_agg)
-            for _, row in t_grouped.iterrows():
-                cards_html += _generate_html_card(row, "TRUMP")
-        except: pass
-
-    # 2. Video Cards di Oggi
-    video_df = df[df['feed_type'] == 'VIDEO'].copy()
-    for _, row in video_df.iterrows():
-        cards_html += _generate_html_card(row, "VIDEO")
-        
-    if cards_html:
-        st.markdown(f'<div class="worldy-grid">{cards_html}</div>', unsafe_allow_html=True)
-    else:
-        st.info("Nessuna novità rilevante nelle ultime 24 ore.")
+    """
+    return html.strip()
 
 def render_trump_section(df):
-    """Sezione Trump Watch (Raggruppata per evitare duplicati)."""
+    """
+    Renderizza la sezione Trump raggruppando post identici che colpiscono asset diversi.
+    """
     trump_df = df[df['feed_type'] == 'SOCIAL_POST'].copy()
-    if trump_df.empty: return
+    
+    if trump_df.empty:
+        return
 
     st.markdown("""
         <div class="section-header header-trump">
             <h2 style="margin:0">🦅 Trump Watch</h2>
+            <p style="margin:0; color:#888">Monitoraggio aggregato di Truth Social e impatto geopolitico.</p>
         </div>
     """, unsafe_allow_html=True)
 
-    # Scelta chiave di raggruppamento
-    if 'url' in trump_df.columns: grp = 'url'
-    elif 'video_id' in trump_df.columns: grp = 'video_id'
-    else: grp = 'summary_card'
+    # --- LOGICA DI RAGGRUPPAMENTO ---
+    # Raggruppiamo per URL (o content se url manca) per unire gli asset
+    # Aggreghiamo 'asset_ticker' in una lista e prendiamo il max di 'impact_score'
+    grouped_df = trump_df.groupby('video_url', as_index=False).agg({
+        'summary_card': 'first',      # Il riassunto è lo stesso
+        'created_at': 'first',        # La data è la stessa
+        'asset_ticker': list,         # <--- QUI UNIAMO I TICKER IN UNA LISTA
+        'impact_score': 'max',        # Prendiamo il punteggio più alto
+        'feed_type': 'first',
+        'source_name': 'first'
+    }).sort_values(by='created_at', ascending=False)
 
-    # Aggregazione: preserva published_at e unisce ticker in lista
-    agg_cols = {
-        'content':'first', 'summary_card':'first', 'published_at':'first', 
-        'asset_ticker':list, 'impact_score':'max', 'feed_type':'first', 
-        'source_name':'first', 'url':'first'
-    }
-    final_agg = {k:v for k,v in agg_cols.items() if k in trump_df.columns}
-
-    try:
-        grouped_df = trump_df.groupby(grp, as_index=False).agg(final_agg)
-        if 'published_at' in grouped_df.columns:
-            grouped_df = grouped_df.sort_values('published_at', ascending=False)
-            
-        cards_html = "".join([_generate_html_card(row, "TRUMP") for _, row in grouped_df.iterrows()])
-        st.markdown(f'<div class="worldy-grid">{cards_html}</div>', unsafe_allow_html=True)
-    except Exception as e:
-        st.error(f"Errore visualizzazione Trump: {e}")
+    # Griglia Responsive
+    cards_html = ""
+    for _, row in grouped_df.iterrows():
+        cards_html += _generate_html_card(row, card_type="TRUMP")
+    
+    st.markdown(f'<div class="worldy-grid">{cards_html}</div>', unsafe_allow_html=True)
 
 def render_market_section(df, assets_filter):
-    """
-    Sezione Mercati: 
-    - Se 'TUTTI': Crea una sezione H3 per ogni Asset.
-    - Se Asset Specifico: Mostra solo quello.
-    """
+    """Renderizza la sezione Insights di Mercato (Youtube)"""
+    # Filtra solo VIDEO
     video_df = df[df['feed_type'] == 'VIDEO'].copy()
-    if video_df.empty: return
+    
+    # Filtro Asset
+    if assets_filter != "TUTTI":
+        video_df = video_df[video_df['asset_ticker'] == assets_filter]
+
+    if video_df.empty:
+        if assets_filter != "TUTTI":
+            st.info(f"Nessun video trovato per {assets_filter}")
+        return
 
     st.markdown("""
         <div class="section-header header-market">
             <h2 style="margin:0">🧠 Market Insights</h2>
+            <p style="margin:0; color:#888">Analisi tecnica e fondamentale dai migliori analisti.</p>
         </div>
     """, unsafe_allow_html=True)
 
-    # Logica Multi-Asset vs Singolo Asset
-    if assets_filter == "TUTTI":
-        unique_assets = sorted(video_df['asset_ticker'].dropna().unique().tolist())
-        for asset in unique_assets:
-            asset_rows = video_df[video_df['asset_ticker'] == asset]
-            if asset_rows.empty: continue
-            
-            # Intestazione Asset
-            st.markdown(f"<h3 style='margin-top:30px; color:#2ECC71;'>💎 {asset}</h3>", unsafe_allow_html=True)
-            
-            # Grid per questo asset
-            cards_html = "".join([_generate_html_card(row, "VIDEO") for _, row in asset_rows.iterrows()])
-            st.markdown(f'<div class="worldy-grid">{cards_html}</div>', unsafe_allow_html=True)
-            
-    else:
-        # Singolo Asset Selezionato
-        filtered_df = video_df[video_df['asset_ticker'] == assets_filter]
-        if filtered_df.empty:
-            st.info(f"Nessun video recente per {assets_filter}")
-            return
-            
-        cards_html = "".join([_generate_html_card(row, "VIDEO") for _, row in filtered_df.iterrows()])
-        st.markdown(f'<div class="worldy-grid">{cards_html}</div>', unsafe_allow_html=True)
+    cards_html = ""
+    for _, row in video_df.iterrows():
+        cards_html += _generate_html_card(row, card_type="VIDEO")
+    
+    st.markdown(f'<div class="worldy-grid">{cards_html}</div>', unsafe_allow_html=True)
