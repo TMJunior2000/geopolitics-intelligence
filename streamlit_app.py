@@ -41,29 +41,29 @@ if df.empty:
     st.warning("⚠️ Nessun dato trovato o database non raggiungibile.")
     st.stop()
 
-# --- FILTRI ---
+# --- FILTRI (SIDEBAR) ---
 unique_assets = sorted(df['asset_ticker'].dropna().unique().tolist())
 all_assets = ["TUTTI"] + unique_assets
 
 if 'active_filter' not in st.session_state:
     st.session_state.active_filter = "TUTTI"
 
-# Grid dei filtri
-buttons_per_row = 8
-for row_idx in range(0, len(all_assets), buttons_per_row):
-    row_assets = all_assets[row_idx:row_idx + buttons_per_row]
-    cols = st.columns(len(row_assets))
+with st.sidebar:
+    st.header("⚙️ Configurazione")
     
-    for i, asset in enumerate(row_assets):
-        with cols[i]:
-            is_active = st.session_state.active_filter == asset
-            if st.button(asset, key=f"btn_{asset}", 
-                        type="primary" if is_active else "secondary",
-                        use_container_width=True):
-                st.session_state.active_filter = asset
-                st.rerun()
-
-st.markdown("<br>", unsafe_allow_html=True)
+    # Usa un radio button verticale o una selectbox nella sidebar
+    selection = st.radio(
+        "Seleziona Asset:",
+        options=all_assets,
+        index=all_assets.index(st.session_state.active_filter) if st.session_state.active_filter in all_assets else 0
+    )
+    
+    if selection != st.session_state.active_filter:
+        st.session_state.active_filter = selection
+        st.rerun()
+        
+    st.divider()
+    st.info("Usa questo menu per filtrare il feed principale.")
 
 # --- RENDER ---
 target_list = unique_assets if st.session_state.active_filter == "TUTTI" else [st.session_state.active_filter]

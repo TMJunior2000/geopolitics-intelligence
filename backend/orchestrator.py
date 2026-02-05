@@ -99,4 +99,4 @@ def run_pipeline(mode: str):
             repo.save_trump_signal(signal_data)
             
         # Piccola pausa per cortesia verso le API
-        time.sleep(2)
+        time.sleep(5)
