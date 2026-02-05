@@ -57,9 +57,9 @@ cutoff_date = start_of_current_week - pd.Timedelta(weeks=st.session_state.histor
 
 # FILTRI DATI
 # Dati di OGGI per il Briefing
-df_today = df[pd.to_datetime(df['ref_date']).dt.normalize() == today]
+df_today = df[df['ref_date'].dt == today]
 # Dati GENERALI filtrati dalla data di taglio in poi
-df_view = df[pd.to_datetime(df['ref_date']) >= cutoff_date]
+df_view = df[df['ref_date'] >= cutoff_date]
 
 # 4. SIDEBAR FILTRI
 with st.sidebar:
