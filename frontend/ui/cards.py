@@ -56,7 +56,7 @@ def _generate_html_card(row, card_type="VIDEO"):
         badge_class = "badge-video"
         
         # Thumbnail
-        video_url = row.get('video_url') or row.get('url')
+        video_url = row.get('video_url')
         if isinstance(video_url, pd.Series): video_url = video_url.iloc[0]
         
         bg_style = "background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);"
@@ -108,7 +108,7 @@ def render_trump_section(df):
     # --- LOGICA DI RAGGRUPPAMENTO ---
     # Raggruppiamo per URL (o content se url manca) per unire gli asset
     # Aggreghiamo 'asset_ticker' in una lista e prendiamo il max di 'impact_score'
-    grouped_df = trump_df.groupby('url', as_index=False).agg({
+    grouped_df = trump_df.groupby('video_url', as_index=False).agg({
         'content': 'first',           # Il testo è lo stesso
         'summary_card': 'first',      # Il riassunto è lo stesso
         'created_at': 'first',        # La data è la stessa
