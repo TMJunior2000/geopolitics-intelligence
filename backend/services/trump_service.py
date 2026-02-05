@@ -14,7 +14,7 @@ class TrumpWatchService:
         self.apify_client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
         
         # 2. Inizializzazione Google GenAI (Nuova SDK)
-        self.ai_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        self.ai_client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 
 
     def get_latest_truths(self, mode: str = "LIVE") -> list:

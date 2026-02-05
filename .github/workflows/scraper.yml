@@ -51,8 +51,8 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           
           # Mapping AI & Tools (Allineati al codice Python)
-          # Il codice Python cerca GEMINI_API_KEY, gli passiamo il tuo secret GOOGLE
-          GEMINI_API_KEY: ${{ secrets.GOOGLE_API_KEY }} 
+          # Il codice Python cerca GOOGLE_API_KEY, gli passiamo il tuo secret GOOGLE
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }} 
           
           # Il codice Python cerca APIFY_API_TOKEN, gli passiamo il tuo secret APIFY
           APIFY_API_TOKEN: ${{ secrets.API_APIFY }}
