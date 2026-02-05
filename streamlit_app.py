@@ -18,14 +18,21 @@ def load_data():
         if not raw: return pd.DataFrame()
         
         df = pd.DataFrame(raw)
-        # Converti date
-        cols_date = ['published_at', 'created_at']
-        for c in cols_date:
-            if c in df.columns:
-                df[c] = pd.to_datetime(df[c], errors='coerce')
+        
+        # --- FIX CRITICO: CREAZIONE DI REF_DATE ---
+        # 1. Convertiamo in Datetime forzando UTC (gestisce stringhe miste)
+        # 'errors=coerce' trasforma i valori errati in NaT
+        df['ref_date'] = pd.to_datetime(df.get('published_at'), utc=True, errors='coerce')
+        
+        # 2. Rimuoviamo il Timezone (tz_localize(None)) 
+        # Questo rende le date "Naive" e compatibili con datetime.now()
+        df['ref_date'] = df['ref_date'].dt.tz_localize(None)
+        
+        # 3. Pulizia: Rimuoviamo le righe dove la data non è valida
+        df = df.dropna(subset=['ref_date'])
         
         # Ordina per data (più recente in alto)
-        return df.sort_values(by='published_at', ascending=False)
+        return df.sort_values(by='ref_date', ascending=False)
     except Exception as e:
         st.error(f"DB Error: {e}")
         return pd.DataFrame()
@@ -44,21 +51,18 @@ if df.empty:
     st.warning("⚠️ In attesa di dati...")
     st.stop()
 
-# --- GESTIONE TEMPORALE (Settimana Corrente + Storico) ---
+# --- GESTIONE TEMPORALE ---
 if 'history_weeks' not in st.session_state:
-    st.session_state.history_weeks = 0 # 0 = Solo settimana corrente
+    st.session_state.history_weeks = 0 
 
-# Calcolo date (Tutto "Naive", senza timezone)
+# Calcolo date (Tutto "Naive", ora compatibile con ref_date)
 today = pd.Timestamp.now().normalize()
-# Troviamo il Lunedì della settimana corrente
 start_of_current_week = today - pd.Timedelta(days=today.dayofweek) 
-# Data di taglio (che si sposta indietro se premiamo "Carica Storico")
 cutoff_date = start_of_current_week - pd.Timedelta(weeks=st.session_state.history_weeks)
 
 # FILTRI DATI
-# Dati di OGGI per il Briefing
-df_today = df[df['ref_date'].dt == today]
-# Dati GENERALI filtrati dalla data di taglio in poi
+# Ora ref_date esiste ed è senza timezone, quindi il confronto funziona
+df_today = df[df['ref_date'].dt.normalize() == today]
 df_view = df[df['ref_date'] >= cutoff_date]
 
 # 4. SIDEBAR FILTRI
