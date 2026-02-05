@@ -58,10 +58,18 @@ def _render_single_card(row):
     if "investire biz" in channel_name.lower(): accent_color = "#2ecc71"
     elif "marketmind" in channel_name.lower(): accent_color = "#95a5a6"
 
-    # Formattazione Data
+        # --- FORMATTAZIONE DATA (FIX ROBUSTEZZA) ---
     import pandas as pd
     try:
-        display_date = pd.to_datetime(row.get('published_at')).strftime("%d %b %Y")
+        # 1. Prova a prendere la data di pubblicazione originale (Video/Post)
+        raw_date = row.get('published_at')
+        
+        # 2. Se manca o è nulla, usa la data di creazione del segnale (Analisi AI)
+        if pd.isna(raw_date) or str(raw_date).strip() == '':
+            raw_date = row.get('created_at')
+            
+        # 3. Formatta
+        display_date = pd.to_datetime(raw_date).strftime("%d %b %Y")
     except:
         display_date = "N.D."
 
