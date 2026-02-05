@@ -118,7 +118,10 @@ class TrumpWatchService:
         DATA: {created_at}
         TESTO: "{clean_text}"
         
-        Identifica annunci su: DAZI, GUERRA, FED, DOLLARO, CRYPTO.
+        Compito: Identifica annunci su: DAZI, GUERRA, FED, DOLLARO, CRYPTO, ECONOMIA...
+        IGNORA: Faide personali, cause legali contro celebrità, auguri, gossip, show TV.
+        Se il post parla di questi argomenti "futili", restituisci impact_score: 0 e nessun asset.
+        
         Rispondi JSON:
         {{
             "impact_score": (intero 1-5),
