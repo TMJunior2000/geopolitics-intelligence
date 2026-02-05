@@ -11,7 +11,7 @@ from dateutil import parser
 class TrumpWatchService:
     def __init__(self):
         # 1. Inizializzazione Apify
-        self.apify_client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
+        self.apify_client = ApifyClient(os.getenv("APIFY_TOKEN"))
         
         # 2. Inizializzazione Google GenAI (Nuova SDK)
         self.ai_client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
@@ -146,7 +146,13 @@ class TrumpWatchService:
                 return None
             
             # Parsing diretto (grazie a response_mime_type non servono replace strani)
-            return json.loads(response.text)
+            parsed_data = json.loads(response.text)
+            
+            if isinstance(parsed_data, list):
+                if len(parsed_data) > 0:
+                    return parsed_data[0]
+                else:
+                    return None
 
         except Exception as e:
             print(f"⚠️ Errore analisi AI Trump: {e}")
