@@ -2,79 +2,66 @@ import streamlit as st
 import pandas as pd
 from database.repository import MarketRepository
 from frontend.ui.styles import load_css
-from frontend.ui.cards import render_grid
+from frontend.ui.cards import render_trump_section, render_market_section
 
-# Configurazione pagina deve essere la PRIMA istruzione Streamlit
-st.set_page_config(page_title="Trading Intel 3.0", layout="wide", page_icon="🧠")
-
-# --- CARICAMENTO CSS ESTERNO ---
-# Ora gestito in modo sicuro rispetto ai path
+# 1. SETUP PAGINA
+st.set_page_config(page_title="Trading Intel", layout="wide", page_icon="🦅")
 load_css("style.css")
 
+# 2. CARICAMENTO DATI
 @st.cache_data(ttl=300)
 def load_data():
     try:
         repo = MarketRepository()
         raw = repo.get_all_insights_flat()
-        if not raw: 
-            return pd.DataFrame()
+        if not raw: return pd.DataFrame()
         
         df = pd.DataFrame(raw)
-        if 'published_at' in df.columns:
-            df['published_at'] = pd.to_datetime(df['published_at'], errors='coerce')
-        return df
+        # Converti date
+        cols_date = ['published_at', 'created_at']
+        for c in cols_date:
+            if c in df.columns:
+                df[c] = pd.to_datetime(df[c], errors='coerce')
+        
+        # Ordina per data (più recente in alto)
+        return df.sort_values(by='created_at', ascending=False)
     except Exception as e:
-        st.error(f"Errore connessione database: {e}")
+        st.error(f"DB Error: {e}")
         return pd.DataFrame()
 
 df = load_data()
 
-# --- UI HEADER ---
+# 3. HEADER (Stile Minimal Worldy)
 st.markdown("""
-<div style="text-align:center; padding: 20px 0;">
-    <h1 style="font-family:'Space Grotesk', sans-serif; font-size: 50px; margin:0;">🧠 Trading Intelligence</h1>
-    <p style="color:#888; letter-spacing:2px;">AI-POWERED MARKET ANALYSIS TERMINAL</p>
+<div style="padding: 20px 0; border-bottom: 1px solid #2D3748; margin-bottom: 30px;">
+    <h1 style="font-size: 42px; letter-spacing: -1px; margin-bottom: 0;">Worldy <span style="color:#2ECC71">Finance</span> AI</h1>
+    <p style="color: #94A3B8; font-size: 16px;">Intelligence Platform for Modern Traders</p>
 </div>
 """, unsafe_allow_html=True)
 
 if df.empty:
-    st.warning("⚠️ Nessun dato trovato o database non raggiungibile.")
+    st.warning("⚠️ In attesa di dati...")
     st.stop()
 
-# --- FILTRI (SIDEBAR) ---
-unique_assets = sorted(df['asset_ticker'].dropna().unique().tolist())
-all_assets = ["TUTTI"] + unique_assets
-
-if 'active_filter' not in st.session_state:
-    st.session_state.active_filter = "TUTTI"
-
+# 4. SIDEBAR FILTRI
 with st.sidebar:
-    st.header("⚙️ Configurazione")
+    st.header("🔍 Filtri")
     
-    # Usa un radio button verticale o una selectbox nella sidebar
-    selection = st.radio(
-        "Seleziona Asset:",
-        options=all_assets,
-        index=all_assets.index(st.session_state.active_filter) if st.session_state.active_filter in all_assets else 0
-    )
+    # Estrai ticker unici solo dai VIDEO (non da Trump)
+    video_assets = sorted(df[df['feed_type'] == 'VIDEO']['asset_ticker'].dropna().unique().tolist())
+    all_options = ["TUTTI"] + video_assets
     
-    if selection != st.session_state.active_filter:
-        st.session_state.active_filter = selection
-        st.rerun()
-        
-    st.divider()
-    st.info("Usa questo menu per filtrare il feed principale.")
-
-# --- RENDER ---
-target_list = unique_assets if st.session_state.active_filter == "TUTTI" else [st.session_state.active_filter]
-render_grid(df, target_list)
-
-# --- FOOTER ---
-st.markdown("---")
-f_col1, f_col2 = st.columns([4,1])
-with f_col1:
-    st.caption(f"📊 {len(df)} insights totali | Ultimo aggiornamento: {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M:%S')}")
-with f_col2:
-    if st.button("🔄 AGGIORNA DATI", use_container_width=True):
+    selected_asset = st.selectbox("Asset Class", options=all_options)
+    
+    st.markdown("---")
+    st.caption("v2.0.1 - Worldy UI")
+    if st.button("🔄 Refresh Data"):
         st.cache_data.clear()
         st.rerun()
+
+# 5. RENDER SEZIONI
+# A. SEZIONE TRUMP (Sempre visibile in alto, non filtrata dagli asset)
+render_trump_section(df)
+
+# B. SEZIONE VIDEO (Filtrabile)
+render_market_section(df, selected_asset)
