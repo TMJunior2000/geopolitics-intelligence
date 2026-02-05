@@ -32,30 +32,19 @@ jobs:
 
       - name: 📦 Install dependencies
         run: |
-          echo "📂 Debug: Contenuto directory corrente:"
-          ls -la
-          
-          echo "🚀 Installazione pacchetti..."
           pip install --upgrade pip
-          # Rimossa la condizione "if" che nascondeva l'errore.
-          # Ora se manca requirements.txt si ferma qui e ti avvisa.
-          pip install -r requirements.txt
-          
-          # Verifica veloce
-          pip list | grep supabase
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: 🚀 Run Worker Pipeline
         env:
-          # Mapping Database
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          
-          # Mapping AI & Tools (Allineati al codice Python)
-          # Il codice Python cerca GOOGLE_API_KEY, gli passiamo il tuo secret GOOGLE
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }} 
-          
-          # Il codice Python cerca APIFY_API_TOKEN, gli passiamo il tuo secret APIFY
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          # Mappiamo il segreto di GitHub (API_APIFY) nella variabile attesa da Config (APIFY_TOKEN)
           APIFY_TOKEN: ${{ secrets.API_APIFY }}
           
-        # Esegue lo script passando la modalità come argomento
-        run: python main_worker.py ${{ inputs.mode || 'LIVE' }}
+          # Se il workflow è manuale, usa l'input scelto. Altrimenti 'LIVE'.
+          WORKER_MODE: ${{ inputs.mode || 'LIVE' }} 
+        
+        # AGGIORNATO: Punta al nuovo entry point principale
+        run: python main_worker.py
