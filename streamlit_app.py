@@ -18,13 +18,13 @@ def load_data():
         
         df = pd.DataFrame(raw)
         # Converti date
-        cols_date = ['published_at', 'created_at']
+        cols_date = ['published_at']
         for c in cols_date:
             if c in df.columns:
                 df[c] = pd.to_datetime(df[c], errors='coerce')
         
         # Ordina per data (più recente in alto)
-        return df.sort_values(by='created_at', ascending=False)
+        return df.sort_values(by='published at', ascending=False)
     except Exception as e:
         st.error(f"DB Error: {e}")
         return pd.DataFrame()

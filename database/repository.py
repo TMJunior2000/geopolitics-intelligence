@@ -222,12 +222,11 @@ class MarketRepository:
     def get_all_insights_flat(self) -> List[Dict[str, Any]]:
         """
         Recupera tutti gli insights per la Dashboard.
-        Include le nuove colonne impact_score e feed_type.
         """
         try:
             response = self.client.table("market_insights")\
-                .select("*, intelligence_feed(*, sources(name))")\
-                .order("created_at", desc=True)\
+                .select("*, intelligence_feed!inner(*, sources(name))")\
+                .order("published_at", foreign_table="intelligence_feed", desc=True)\
                 .execute()
             
             flat_data = []
