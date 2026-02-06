@@ -5,51 +5,27 @@ import pytz  # per gestire timezone
 def _generate_html_card(row, card_type="VIDEO", local_tz="Europe/Rome"):
     """
     Genera l'HTML per una card.
-    Versione DEFINITIVA: Logica data blindata basata sui dati reali del DB.
+    Versione MINIFIED: Rimuove spazi e a capo per evitare che Streamlit mostri il codice.
     """
-    # ---------------------------------------------------------
-    # 1. GESTIONE TICKER
-    # ---------------------------------------------------------
+    # 1. GESTIONE DATA E TICKER (Logica invariata)
     tickers = row.get('asset_ticker')
-    if not isinstance(tickers, list):
-        tickers = [tickers] if tickers else []
-    
+    if not isinstance(tickers, list): tickers = [tickers] if tickers else []
     valid_tickers = sorted(list(set([str(t).strip() for t in tickers if t and str(t).lower() not in ['nan', 'none', '']])))
     tickers_html = "".join(f'<span class="ticker-badge">{t}</span>' for t in valid_tickers)
 
-    # ---------------------------------------------------------
-    # 2. GESTIONE DATA (FIX "OGGI")
-    # ---------------------------------------------------------
     date_str = ""
     try:
-        # Ordine di priorità per trovare la data corretta
-        # 1. temp_date (creata dal carosello per unificare)
-        # 2. published_at (campo standard DB intelligence_feed)
-        # 3. created_at (campo raw scraping, se presente)
         raw_date = row.get('temp_date') or row.get('published_at') or row.get('created_at')
-        
-        # Gestione se è una lista/serie (dal groupby)
         if isinstance(raw_date, (pd.Series, list)):
-            if len(raw_date) > 0:
-                raw_date = raw_date[0] if isinstance(raw_date, list) else raw_date.iloc[0]
-            else:
-                raw_date = None
-
-        # Parsing sicuro
+            raw_date = raw_date[0] if isinstance(raw_date, list) else raw_date.iloc[0]
+        
         if raw_date and str(raw_date).lower() != 'nat':
-            # Forza stringa per pd.to_datetime per sicurezza
             dt = pd.to_datetime(str(raw_date), utc=True)
             dt_local = dt.tz_convert(local_tz)
             date_str = dt_local.strftime("%d %b %H:%M")
-            
-    except Exception as e:
-        # Debug silenzioso (puoi scommentare se serve)
-        # print(f"Date Error: {e} on row: {row}")
-        date_str = ""
+    except: date_str = ""
 
-    # ---------------------------------------------------------
-    # 3. LOGICA VISIVA
-    # ---------------------------------------------------------
+    # 2. LOGICA VISIVA
     summary = row.get('summary_card') or row.get('video_summary') or row.get('title') or "..."
     summary = str(summary).replace('"', '&quot;')
 
@@ -57,35 +33,22 @@ def _generate_html_card(row, card_type="VIDEO", local_tz="Europe/Rome"):
         badge_text = "TRUMP WATCH"
         badge_class = "badge-trump"
         bg_style = "background: linear-gradient(135deg, #002D72 0%, #C8102E 100%);"
-        
-        display_title = summary
-        if len(display_title) > 135: display_title = display_title[:132] + "..."
-
-        score = row.get('impact_score', 0)
-        try:
-            if isinstance(score, (pd.Series, list)): score = max(score)
-            score = float(score)
-        except: score = 0
-        
-        score_color = "#E74C3C" if score >= 4 else "#F1C40F"
-        footer_info = "WATCH"
-
-    else:  # VIDEO
+        display_title = summary if len(summary) < 140 else summary[:137] + "..."
+        score_color = "#E74C3C" # Rosso
+        footer_text = "TRUMP INTEL"
+    else: 
         cat = row.get('category') or row.get('channel_style', 'MARKET')
         if isinstance(cat, (pd.Series, list)): cat = str(cat[0])
-        
         badge_text = str(cat).upper() if cat else "MARKET"
         badge_class = "badge-video"
         bg_style = "background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);"
-        
         display_title = summary
-        score_color = "#2ECC71"
-        footer_info = "WATCH"
+        score_color = "#2ECC71" # Verde
+        footer_text = "VIDEO INTEL"
 
-    # ---------------------------------------------------------
-    # 4. OUTPUT HTML
-    # ---------------------------------------------------------
-    return f"""
+    # 3. HTML MINIFICATO (La correzione chiave è qui sotto)
+    # Usiamo una stringa unica senza indentazioni o newlines che confondano Streamlit
+    html = f"""
     <div class="w-card">
         <div class="w-cover" style="{bg_style}">
             <div class="w-badge {badge_class}">{badge_text}</div>
@@ -98,12 +61,15 @@ def _generate_html_card(row, card_type="VIDEO", local_tz="Europe/Rome"):
                 <div class="w-tickers">{tickers_html}</div>
             </div>
             <div class="w-footer">
-                <span style="color: #94A3B8; font-size: 12px;">{card_type}</span>
-                <span class="w-score" style="color: {score_color};">{footer_info}</span>
+                <span style="color: #94A3B8; font-size: 12px;">{footer_text}</span>
+                <span class="w-score" style="color: {score_color};">WATCH</span>
             </div>
         </div>
     </div>
     """
+    
+    # Rimuoviamo tutti i ritorni a capo e gli spazi extra
+    return " ".join(html.split())
 
 def render_trump_section(df):
     """
