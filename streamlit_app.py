@@ -61,7 +61,7 @@ with st.sidebar:
 
 # 5. RENDER SEZIONI
 # A. CAROSELLO GIORNALIERO
-today_df = df[df['published_at'].astype("datetime64[ns]").dt.date == pd.Timestamp.today().date()]
+today_df = df[df['published_at'].notna() & (df['published_at'].apply(lambda x: x.date()) == pd.Timestamp.today().date())]
 if not today_df.empty:
     st.markdown("<h2>🔥 Carosello Giornaliero</h2>", unsafe_allow_html=True)
     render_market_section(today_df, assets_filter="TUTTI")
