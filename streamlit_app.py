@@ -61,17 +61,17 @@ with st.sidebar:
 
 # 5. RENDER SEZIONI
 # A. CAROSELLO GIORNALIERO
-if not df.empty:
-    latest_date_utc = df['published_at'].max().normalize()  # mezzanotte UTC del giorno più recente
+# Trova la data più recente disponibile (UTC)
+latest_date = df['published_at'].max().normalize()  # mezzanotte UTC del giorno più recente
 
-    # Filtra tutte le righe di quel giorno (UTC)
-    today_df = df[(df['published_at'] >= latest_date_utc) &
-                (df['published_at'] < latest_date_utc + pd.Timedelta(days=1))]
+# Filtra tutte le righe di quel giorno (UTC)
+today_df = df[(df['published_at'] >= latest_date) & 
+              (df['published_at'] < latest_date + pd.Timedelta(days=1))]
 
-    if not today_df.empty:
-        st.markdown("<h2>🔥 Carosello Giornaliero</h2>", unsafe_allow_html=True)
-        render_market_section(today_df, assets_filter="TUTTI")
-        render_trump_section(today_df)
+if not today_df.empty:
+    st.markdown("<h2>🔥 Carosello Giornaliero</h2>", unsafe_allow_html=True)
+    render_market_section(today_df, assets_filter="TUTTI")
+    render_trump_section(today_df)
 
 # B. SEZIONE TRUMP
 render_trump_section(df if selected_asset=="TUTTI" else df[df['asset_ticker']==selected_asset])
