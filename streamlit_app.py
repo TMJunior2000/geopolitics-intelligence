@@ -24,7 +24,7 @@ def load_data():
                 df[c] = pd.to_datetime(df[c], errors='coerce')
         
         # Ordina per data (più recente in alto)
-        return df.sort_values(by='published at', ascending=False)
+        return df.sort_values(by='published_at', ascending=False)
     except Exception as e:
         st.error(f"DB Error: {e}")
         return pd.DataFrame()
