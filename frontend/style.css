@@ -95,7 +95,7 @@ h1, h2, h3 {
 
 /* --- CONTENUTO CARD --- */
 .w-content {
-    padding: 18px;
+    padding: 18px 18px 48px 18px;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
@@ -154,21 +154,32 @@ h1, h2, h3 {
 
 /* --- TICKER BADGES (GROUPED) --- */
 .w-tickers {
+    position: absolute;
+    bottom: 14px;
+    left: 14px;
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    margin-top: 12px;
+    z-index: 3;
 }
 
 .ticker-badge {
-    background: rgba(148, 163, 184, 0.12);
-    border: 1px solid rgba(148, 163, 184, 0.25);
-    color: #CBD5F5;
+    background: rgba(15, 23, 42, 0.75);
+    backdrop-filter: blur(6px);
+    color: #E2E8F0;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.15);
+    transition: all 0.2s ease;
 }
 
 .ticker-badge:hover {
-    background-color: rgba(255, 255, 255, 0.2);
-    border-color: #FFFFFF;
+    background: rgba(255,255,255,0.15);
+    border-color: rgba(255,255,255,0.35);
     color: #FFFFFF;
 }
 
