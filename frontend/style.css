@@ -3,7 +3,7 @@
 
 /* --- GLOBAL LAYOUT --- */
 .stApp {
-    background-color: #0E1117;
+    background: radial-gradient(circle at top, #0F172A 0%, #020617 70%);
     font-family: 'Inter', sans-serif;
 }
 
