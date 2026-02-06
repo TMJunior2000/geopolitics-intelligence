@@ -5,7 +5,7 @@ from pathlib import Path
 # Struttura assunta: frontend/ui/styles.py -> risale a root -> scende a frontend/assets
 CURRENT_DIR = Path(__file__).parent.resolve()
 PROJECT_ROOT = CURRENT_DIR.parent.parent  # Adjust dependent on where styles.py lives
-ASSETS_DIR = PROJECT_ROOT / "frontend" / "assets"
+ASSETS_DIR = PROJECT_ROOT / "frontend"
 
 def load_css(css_filename="style.css"):
     """
