@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import pytz  # per gestire timezone
 
-def _generate_html_card(row, card_type="VIDEO", local_tz: str | None = "Europe/Rome"):
+def _generate_html_card(row, card_type="VIDEO", local_tz="Europe/Rome"):
     """
     Genera l'HTML per una card.
     Mostra data + ora, opzionalmente convertita in timezone locale.
@@ -11,7 +11,7 @@ def _generate_html_card(row, card_type="VIDEO", local_tz: str | None = "Europe/R
     tickers = row.get('asset_ticker')
     if not isinstance(tickers, list):
         tickers = [tickers] if tickers else []
-    tickers = sorted(list(set([t for t in tickers if t])))
+    tickers = sorted(list(set([str(t).strip() for t in tickers if t])))
     tickers_html = "".join(f'<span class="ticker-badge">{t}</span>' for t in tickers)
 
     # --- SUMMARY ---
@@ -34,7 +34,7 @@ def _generate_html_card(row, card_type="VIDEO", local_tz: str | None = "Europe/R
             dt = dt.tz_convert(local_tz)
 
         # Formatta data + ora
-        date_str = dt.strftime("%d %b %Y %H:%M %Z")
+        date_str = dt.strftime("%d %b %H:%M")
 
     except Exception as e:
         print(f"⚠️ Data parsing error: {e}")
@@ -57,28 +57,20 @@ def _generate_html_card(row, card_type="VIDEO", local_tz: str | None = "Europe/R
             extra_info += f"{row.get('sentiment')} | "
         if row.get('time_horizon'):
             extra_info += f"{row.get('time_horizon')} | "
-        if row.get('entry_zone'):
-            extra_info += f"Entry: {row.get('entry_zone')} | "
-        if row.get('target_price'):
-            extra_info += f"Target: {row.get('target_price')} | "
-        if row.get('stop_invalidation'):
-            extra_info += f"Stop: {row.get('stop_invalidation')}"
-
+        
         footer_info = "WATCH" if not extra_info else extra_info.strip(" | ")
         score_color = "#E74C3C" if score >= 4 else "#F1C40F"
 
     else:  # VIDEO
-        badge_text = row.get('channel_style', 'ANALYSIS')
+        badge_text = str(row.get('category', 'MARKET')).upper()
         if isinstance(badge_text, pd.Series):
             badge_text = badge_text.iloc[0]
         badge_class = "badge-video"
 
-        video_url = row.get('video_url')
-        if isinstance(video_url, pd.Series):
-            video_url = video_url.iloc[0]
-
-        bg_style = "background: linear-gradient(135deg, #0F766E 0%, #22C55E 100%);"
-        raw_title = row.get('summary_card') or row.get('video_summary') or "Nessuna descrizione."
+        bg_style = "background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);"
+        
+        # Titolo: usa il title o il summary
+        raw_title = row.get('title') or row.get('summary_card') or "Nessuna descrizione."
         if isinstance(raw_title, pd.Series):
             raw_title = raw_title.iloc[0]
         display_title = str(raw_title).replace('"', '&quot;')
@@ -110,7 +102,7 @@ def _generate_html_card(row, card_type="VIDEO", local_tz: str | None = "Europe/R
 
 def render_trump_section(df):
     """
-    Renderizza la sezione Trump raggruppando post identici che colpiscono asset diversi.
+    Renderizza la sezione Trump (Archivio).
     """
     trump_df = df[df['feed_type'] == 'SOCIAL_POST'].copy()
     
@@ -124,19 +116,15 @@ def render_trump_section(df):
         </div>
     """, unsafe_allow_html=True)
 
-    # --- LOGICA DI RAGGRUPPAMENTO ---
-    # Raggruppiamo per URL (o content se url manca) per unire gli asset
-    # Aggreghiamo 'asset_ticker' in una lista e prendiamo il max di 'impact_score'
     grouped_df = trump_df.groupby('video_url', as_index=False).agg({
-        'summary_card': 'first',      # Il riassunto è lo stesso
-        'created_at': 'first',        # La data è la stessa
-        'asset_ticker': list,         # <--- QUI UNIAMO I TICKER IN UNA LISTA
-        'impact_score': 'max',        # Prendiamo il punteggio più alto
+        'summary_card': 'first',
+        'created_at': 'first',
+        'asset_ticker': list,
+        'impact_score': 'max',
         'feed_type': 'first',
         'source_name': 'first'
     }).sort_values(by='created_at', ascending=False)
 
-    # Griglia Responsive
     cards_html = ""
     for _, row in grouped_df.iterrows():
         cards_html += _generate_html_card(row, card_type="TRUMP")
@@ -144,11 +132,9 @@ def render_trump_section(df):
     st.markdown(f'<div class="worldy-grid">{cards_html}</div>', unsafe_allow_html=True)
 
 def render_market_section(df, assets_filter):
-    """Renderizza la sezione Insights di Mercato (Youtube)"""
-    # Filtra solo VIDEO
+    """Renderizza la sezione Insights di Mercato (Archivio)"""
     video_df = df[df['feed_type'] == 'VIDEO'].copy()
     
-    # Filtro Asset
     if assets_filter != "TUTTI":
         video_df = video_df[video_df['asset_ticker'] == assets_filter]
 
@@ -169,7 +155,6 @@ def render_market_section(df, assets_filter):
         cards_html += _generate_html_card(row, card_type="VIDEO")
     
     st.markdown(f'<div class="worldy-grid">{cards_html}</div>', unsafe_allow_html=True)
-    
 
 def render_carousel(df):
     """
@@ -180,9 +165,8 @@ def render_carousel(df):
         st.warning("⚠️ Nessun dato disponibile per il carosello.")
         return
 
-    # 1. IDENTIFICAZIONE DATA (Giorno più recente con dati)
-    # Cerchiamo la data massima tra 'published_at' (Video) e 'created_at' (Trump)
-    # Normalizziamo le colonne data per il confronto
+    # 1. IDENTIFICAZIONE DATA
+    df = df.copy()
     df['temp_date'] = df['published_at'].fillna(df['created_at'])
     
     if df['temp_date'].dropna().empty:
@@ -191,51 +175,44 @@ def render_carousel(df):
     latest_ts = df['temp_date'].max()
     target_date = latest_ts.normalize() # Mezzanotte del giorno più recente
     
-    # Filtriamo il DataFrame per quel giorno specifico (00:00 - 23:59)
-    # Usiamo una maschera booleana sicura
+    # Filtriamo il DataFrame per quel giorno specifico
     mask = (df['temp_date'] >= target_date) & (df['temp_date'] < target_date + pd.Timedelta(days=1))
     today_df = df.loc[mask].copy()
 
     if today_df.empty:
         return
 
-    # 2. PREPARAZIONE DATI (Split & Grouping)
+    # 2. PREPARAZIONE DATI
     
-    # A. TRUMP: Raggruppamento per evitare duplicati (stesso URL/testo = 1 card con più ticker)
+    # A. TRUMP
     trump_raw = today_df[today_df['feed_type'] == 'SOCIAL_POST']
     trump_items = []
     
     if not trump_raw.empty:
-        # Raggruppa per URL (o created_at se url manca)
         grouped_trump = trump_raw.groupby('video_url', as_index=False).agg({
-            'summary_card': 'first',      # Testo
-            'created_at': 'first',        # Data
-            'asset_ticker': list,         # Unisce i ticker in lista: ['OIL', 'USD']
-            'impact_score': 'max',        # Prende il punteggio più alto
+            'summary_card': 'first',
+            'created_at': 'first',
+            'asset_ticker': list,
+            'impact_score': 'max',
             'feed_type': 'first',
-            'video_url': 'first',         # Mantiene l'URL per chiave
-            'published_at': 'first'       # Per compatibilità sort
+            'video_url': 'first',
+            'published_at': 'first'
         })
-        # Convertiamo in lista di dizionari per il merge facile
         trump_items = grouped_trump.to_dict('records')
 
-    # B. MARKET (VIDEO): Presi così come sono
+    # B. MARKET
     market_raw = today_df[today_df['feed_type'] == 'VIDEO']
     market_items = market_raw.to_dict('records')
 
     # 3. MERGE & SORT
-    # Uniamo le due liste
     carousel_items = trump_items + market_items
     
-    # Ordiniamo per data decrescente (dal più recente al più vecchio nella giornata)
-    # Usiamo una funzione lambda che cerca 'created_at' o 'published_at'
     carousel_items.sort(
         key=lambda x: x.get('published_at') if pd.notnull(x.get('published_at')) else x.get('created_at'), 
         reverse=True
     )
 
     # 4. RENDER HTML
-    # Intestazione con la data dinamica
     formatted_date = target_date.strftime('%d %B')
     st.markdown(f"""
         <div style="margin-bottom: 20px;">
@@ -246,15 +223,10 @@ def render_carousel(df):
         </div>
     """, unsafe_allow_html=True)
 
-    # Generazione Card
     cards_html = ""
     for item in carousel_items:
-        # Determina il tipo per lo stile (Verde o Rosso)
         ftype = item.get('feed_type')
         card_type = "TRUMP" if ftype == 'SOCIAL_POST' else "VIDEO"
-        
-        # Genera HTML singola card
         cards_html += _generate_html_card(item, card_type=card_type)
 
-    # Chiusura Griglia
     st.markdown(f'<div class="worldy-grid">{cards_html}</div>', unsafe_allow_html=True)
