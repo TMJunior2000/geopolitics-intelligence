@@ -169,3 +169,92 @@ def render_market_section(df, assets_filter):
         cards_html += _generate_html_card(row, card_type="VIDEO")
     
     st.markdown(f'<div class="worldy-grid">{cards_html}</div>', unsafe_allow_html=True)
+    
+
+def render_carousel(df):
+    """
+    Renderizza il Carosello Unificato (Video + Trump).
+    Logica: Prende il giorno più recente disponibile nel DB e mostra tutto il mix di contenuti.
+    """
+    if df.empty:
+        st.warning("⚠️ Nessun dato disponibile per il carosello.")
+        return
+
+    # 1. IDENTIFICAZIONE DATA (Giorno più recente con dati)
+    # Cerchiamo la data massima tra 'published_at' (Video) e 'created_at' (Trump)
+    # Normalizziamo le colonne data per il confronto
+    df['temp_date'] = df['published_at'].fillna(df['created_at'])
+    
+    if df['temp_date'].dropna().empty:
+        return
+
+    latest_ts = df['temp_date'].max()
+    target_date = latest_ts.normalize() # Mezzanotte del giorno più recente
+    
+    # Filtriamo il DataFrame per quel giorno specifico (00:00 - 23:59)
+    # Usiamo una maschera booleana sicura
+    mask = (df['temp_date'] >= target_date) & (df['temp_date'] < target_date + pd.Timedelta(days=1))
+    today_df = df.loc[mask].copy()
+
+    if today_df.empty:
+        return
+
+    # 2. PREPARAZIONE DATI (Split & Grouping)
+    
+    # A. TRUMP: Raggruppamento per evitare duplicati (stesso URL/testo = 1 card con più ticker)
+    trump_raw = today_df[today_df['feed_type'] == 'SOCIAL_POST']
+    trump_items = []
+    
+    if not trump_raw.empty:
+        # Raggruppa per URL (o created_at se url manca)
+        grouped_trump = trump_raw.groupby('video_url', as_index=False).agg({
+            'summary_card': 'first',      # Testo
+            'created_at': 'first',        # Data
+            'asset_ticker': list,         # Unisce i ticker in lista: ['OIL', 'USD']
+            'impact_score': 'max',        # Prende il punteggio più alto
+            'feed_type': 'first',
+            'video_url': 'first',         # Mantiene l'URL per chiave
+            'published_at': 'first'       # Per compatibilità sort
+        })
+        # Convertiamo in lista di dizionari per il merge facile
+        trump_items = grouped_trump.to_dict('records')
+
+    # B. MARKET (VIDEO): Presi così come sono
+    market_raw = today_df[today_df['feed_type'] == 'VIDEO']
+    market_items = market_raw.to_dict('records')
+
+    # 3. MERGE & SORT
+    # Uniamo le due liste
+    carousel_items = trump_items + market_items
+    
+    # Ordiniamo per data decrescente (dal più recente al più vecchio nella giornata)
+    # Usiamo una funzione lambda che cerca 'created_at' o 'published_at'
+    carousel_items.sort(
+        key=lambda x: x.get('published_at') if pd.notnull(x.get('published_at')) else x.get('created_at'), 
+        reverse=True
+    )
+
+    # 4. RENDER HTML
+    # Intestazione con la data dinamica
+    formatted_date = target_date.strftime('%d %B')
+    st.markdown(f"""
+        <div style="margin-bottom: 20px;">
+            <h2 style="display:inline-block; margin-bottom:0;">🔥 Carosello Giornaliero</h2>
+            <span style="color:#94A3B8; font-family:'Space Grotesk'; margin-left:10px; font-size:18px;">
+                {formatted_date}
+            </span>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # Generazione Card
+    cards_html = ""
+    for item in carousel_items:
+        # Determina il tipo per lo stile (Verde o Rosso)
+        ftype = item.get('feed_type')
+        card_type = "TRUMP" if ftype == 'SOCIAL_POST' else "VIDEO"
+        
+        # Genera HTML singola card
+        cards_html += _generate_html_card(item, card_type=card_type)
+
+    # Chiusura Griglia
+    st.markdown(f'<div class="worldy-grid">{cards_html}</div>', unsafe_allow_html=True)

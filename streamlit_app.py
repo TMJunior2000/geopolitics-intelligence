@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from database.repository import MarketRepository
 from frontend.ui.styles import load_css
-from frontend.ui.cards import render_trump_section, render_market_section
+from frontend.ui.cards import render_trump_section, render_market_section, render_carousel
 
 # 1. SETUP PAGINA
 st.set_page_config(page_title="Trading Intel", layout="wide", page_icon="🦅")
@@ -64,22 +64,7 @@ with st.sidebar:
 
 # 5. RENDER SEZIONI
 # A. CAROSELLO
-if not df.empty:
-    # Prendi la data massima disponibile
-    latest_datetime = df['published_at'].max()
-    latest_date = latest_datetime.normalize()  # mezzanotte UTC
-
-    # Filtra tutte le righe di quel giorno
-    today_df = df[(df['published_at'] >= latest_date) &
-                  (df['published_at'] < latest_date + pd.Timedelta(days=1))]
-
-    if not today_df.empty:
-        st.markdown("<h2>🔥 Carosello Giornaliero</h2>", unsafe_allow_html=True)
-        render_market_section(today_df, assets_filter="TUTTI")
-        render_trump_section(today_df)
-    else:
-        st.warning("⚠️ Nessun dato disponibile per il giorno più recente")
-
+render_carousel(df)
 
 # B. SEZIONE TRUMP
 render_trump_section(df if selected_asset=="TUTTI" else df[df['asset_ticker']==selected_asset])

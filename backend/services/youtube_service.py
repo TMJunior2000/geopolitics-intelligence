@@ -10,8 +10,8 @@ class YouTubeService:
         videos = []
         
         # --- CONFIGURAZIONE DATE PER BACKFILL ---
-        BACKFILL_START_DATE = datetime(2026, 2, 1)
-        BACKFILL_END_DATE = datetime(2026, 2, 5, 00, 00, 00)
+        BACKFILL_START_DATE = datetime(2026, 2, 4)
+        BACKFILL_END_DATE = datetime(2026, 2, 7, 00, 00, 00)
         
         print(f"   📡 YouTube Fetch: {handle} | Mode: {mode}")
 

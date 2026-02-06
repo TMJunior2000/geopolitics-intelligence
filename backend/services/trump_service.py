@@ -22,7 +22,7 @@ class TrumpWatchService:
         
         if mode == "BACKFILL":
             # Start dal 1 Gennaio 2026
-            start_date = datetime(2026, 1, 1, tzinfo=timezone.utc)
+            start_date = datetime(2026, 2, 4, tzinfo=timezone.utc)
             run_max_items = 500 
             run_monitoring = False 
         else:
