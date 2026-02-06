@@ -154,9 +154,9 @@ h1, h2, h3 {
 
 /* --- TICKER BADGES (GROUPED) --- */
 .w-tickers {
-    position: absolute;
-    bottom: 14px;
-    left: 14px;
+    position: absolute;   /* nuovo */
+    bottom: 14px;         /* fisso */
+    left: 14px;           /* fisso */
     display: flex;
     flex-wrap: wrap;
     gap: 6px;

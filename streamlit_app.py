@@ -60,8 +60,15 @@ with st.sidebar:
         st.rerun()
 
 # 5. RENDER SEZIONI
-# A. SEZIONE TRUMP (Sempre visibile in alto, non filtrata dagli asset)
-render_trump_section(df)
+# A. CAROSELLO GIORNALIERO
+today_df = df[df['published_at'].astype("datetime64[ns]").dt.date == pd.Timestamp.today().date()]
+if not today_df.empty:
+    st.markdown("<h2>🔥 Carosello Giornaliero</h2>", unsafe_allow_html=True)
+    render_market_section(today_df, assets_filter="TUTTI")
+    render_trump_section(today_df)
+    
+# B. SEZIONE TRUMP
+render_trump_section(df if selected_asset=="TUTTI" else df[df['asset_ticker']==selected_asset])
 
-# B. SEZIONE VIDEO (Filtrabile)
+# C. SEZIONE VIDEO
 render_market_section(df, selected_asset)

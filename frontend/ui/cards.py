@@ -46,8 +46,21 @@ def _generate_html_card(row, card_type="VIDEO"):
         score = row.get('impact_score', 0)
         if isinstance(score, pd.Series) or isinstance(score, list):
             score = max(score)
-            
-        footer_info = f"IMPACT: {score}/5"
+        
+        extra_info = ""
+        if row.get('sentiment'): 
+            extra_info += f"{row.get('sentiment')} | "
+        if row.get('time_horizon'):
+            extra_info += f"{row.get('time_horizon')} | "
+        if row.get('entry_zone'):
+            extra_info += f"Entry: {row.get('entry_zone')} | "
+        if row.get('target_price'):
+            extra_info += f"Target: {row.get('target_price')} | "
+        if row.get('stop_invalidation'):
+            extra_info += f"Stop: {row.get('stop_invalidation')}"
+
+        footer_info = "WATCH" if not extra_info else extra_info.strip(" | ")
+        
         score_color = "#E74C3C" if score >= 4 else "#F1C40F"
         
     else: # VIDEO
@@ -60,7 +73,7 @@ def _generate_html_card(row, card_type="VIDEO"):
         if isinstance(video_url, pd.Series): video_url = video_url.iloc[0]
         
         bg_style = "background: linear-gradient(135deg, #0F766E 0%, #22C55E 100%);"
-        raw_title = row.get('video_title') or row.get('asset_name')
+        raw_title = row.get('summary_card') or row.get('video_summary') or "Nessuna descrizione."
         if isinstance(raw_title, pd.Series): raw_title = raw_title.iloc[0]
         display_title = str(raw_title).replace('"', '&quot;')
         
