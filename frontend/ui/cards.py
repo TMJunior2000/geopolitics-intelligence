@@ -1,54 +1,59 @@
 import streamlit as st
 import pandas as pd
+import pytz  # per gestire timezone
 
-def _generate_html_card(row, card_type="VIDEO"):
+def _generate_html_card(row, card_type="VIDEO", local_tz: str | None = "Europe/Rome"):
     """
-    Genera l'HTML puro. Supporta il raggruppamento di più asset nella stessa card.
+    Genera l'HTML per una card.
+    Mostra data + ora, opzionalmente convertita in timezone locale.
     """
-    # --- GESTIONE DUPLICATI / LISTE ---
-    # Se 'asset_ticker' è una lista (perché abbiamo raggruppato), la usiamo.
-    # Altrimenti la trasformiamo in lista.
+    # --- GESTIONE TICKER ---
     tickers = row.get('asset_ticker')
     if not isinstance(tickers, list):
         tickers = [tickers] if tickers else []
-    
-    # Rimuovi duplicati e valori nulli
     tickers = sorted(list(set([t for t in tickers if t])))
-    
-    # Generiamo l'HTML per i badge dei ticker
-    tickers_html = ""
-    for t in tickers:
-        tickers_html += f'<span class="ticker-badge">{t}</span>'
+    tickers_html = "".join(f'<span class="ticker-badge">{t}</span>' for t in tickers)
 
-    # --- DATI BASE ---
+    # --- SUMMARY ---
     summary = row.get('summary_card') or row.get('video_summary') or "Nessuna descrizione."
     summary = str(summary).replace('"', '&quot;')
-    
-    # Data
+
+    # --- DATA + ORA ---
     try:
         raw_date = row.get('published_at') or row.get('created_at')
-        # Se è una serie (dal groupby), prendiamo il primo valore
-        if isinstance(raw_date, pd.Series): raw_date = raw_date.iloc[0]
-        date_str = pd.to_datetime(raw_date).strftime("%d %b %Y")
-    except:
+        if isinstance(raw_date, pd.Series):
+            raw_date = raw_date.iloc[0]
+
+        dt = pd.to_datetime(raw_date)
+        if dt.tzinfo is None:
+            # Assume UTC se non c'è timezone
+            dt = dt.tz_localize('UTC')
+
+        # Converti in locale se richiesto
+        if local_tz:
+            dt = dt.tz_convert(local_tz)
+
+        # Formatta data + ora
+        date_str = dt.strftime("%d %b %Y %H:%M %Z")
+
+    except Exception as e:
+        print(f"⚠️ Data parsing error: {e}")
         date_str = "OGGI"
 
     # --- LOGICA VISIVA ---
-    bg_style = ""
     if card_type == "TRUMP":
         badge_text = "TRUMP WATCH"
         badge_class = "badge-trump"
         bg_style = "background: linear-gradient(135deg, #002D72 0%, #C8102E 100%);"
-        
+
         display_title = summary[:120] + "..." if len(summary) > 120 else summary
-        
-        # Gestione Score (se raggruppato, prendiamo il massimo)
+
         score = row.get('impact_score', 0)
         if isinstance(score, pd.Series) or isinstance(score, list):
             score = max(score)
         
         extra_info = ""
-        if row.get('sentiment'): 
+        if row.get('sentiment'):
             extra_info += f"{row.get('sentiment')} | "
         if row.get('time_horizon'):
             extra_info += f"{row.get('time_horizon')} | "
@@ -60,27 +65,28 @@ def _generate_html_card(row, card_type="VIDEO"):
             extra_info += f"Stop: {row.get('stop_invalidation')}"
 
         footer_info = "WATCH" if not extra_info else extra_info.strip(" | ")
-        
         score_color = "#E74C3C" if score >= 4 else "#F1C40F"
-        
-    else: # VIDEO
+
+    else:  # VIDEO
         badge_text = row.get('channel_style', 'ANALYSIS')
-        if isinstance(badge_text, pd.Series): badge_text = badge_text.iloc[0] # Fix groupby
+        if isinstance(badge_text, pd.Series):
+            badge_text = badge_text.iloc[0]
         badge_class = "badge-video"
-        
-        # Thumbnail
+
         video_url = row.get('video_url')
-        if isinstance(video_url, pd.Series): video_url = video_url.iloc[0]
-        
+        if isinstance(video_url, pd.Series):
+            video_url = video_url.iloc[0]
+
         bg_style = "background: linear-gradient(135deg, #0F766E 0%, #22C55E 100%);"
         raw_title = row.get('summary_card') or row.get('video_summary') or "Nessuna descrizione."
-        if isinstance(raw_title, pd.Series): raw_title = raw_title.iloc[0]
+        if isinstance(raw_title, pd.Series):
+            raw_title = raw_title.iloc[0]
         display_title = str(raw_title).replace('"', '&quot;')
-        
-        footer_info = "WATCH" # Semplificato per layout raggruppato
+
+        footer_info = "WATCH"
         score_color = "#2ECC71"
 
-    # HTML TEMPLATE
+    # --- TEMPLATE HTML ---
     html = f"""
     <div class="w-card">
         <div class="w-cover" style="{bg_style}">

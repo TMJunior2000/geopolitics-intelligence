@@ -14,17 +14,20 @@ def load_data():
     try:
         repo = MarketRepository()
         raw = repo.get_all_insights_flat()
-        if not raw: return pd.DataFrame()
+        if not raw: 
+            return pd.DataFrame()
         
         df = pd.DataFrame(raw)
-        # Converti date
-        cols_date = ['published_at']
-        for c in cols_date:
-            if c in df.columns:
-                df[c] = pd.to_datetime(df[c], errors='coerce')
+
+        # Converti le date in UTC direttamente
+        if 'published_at' in df.columns:
+            df['published_at'] = pd.to_datetime(df['published_at'], errors='coerce', utc=True)
+        if 'created_at' in df.columns:  # Per i Trump post
+            df['created_at'] = pd.to_datetime(df['created_at'], errors='coerce', utc=True)
         
-        # Ordina per data (più recente in alto)
+        # Ordina per published_at decrescente
         return df.sort_values(by='published_at', ascending=False)
+
     except Exception as e:
         st.error(f"DB Error: {e}")
         return pd.DataFrame()
@@ -60,18 +63,23 @@ with st.sidebar:
         st.rerun()
 
 # 5. RENDER SEZIONI
-# A. CAROSELLO GIORNALIERO
-# Trova la data più recente disponibile (UTC)
-latest_date = df['published_at'].max().normalize()  # mezzanotte UTC del giorno più recente
+# A. CAROSELLO
+if not df.empty:
+    # Prendi la data massima disponibile
+    latest_datetime = df['published_at'].max()
+    latest_date = latest_datetime.normalize()  # mezzanotte UTC
 
-# Filtra tutte le righe di quel giorno (UTC)
-today_df = df[(df['published_at'] >= latest_date) & 
-              (df['published_at'] < latest_date + pd.Timedelta(days=1))]
+    # Filtra tutte le righe di quel giorno
+    today_df = df[(df['published_at'] >= latest_date) &
+                  (df['published_at'] < latest_date + pd.Timedelta(days=1))]
 
-if not today_df.empty:
-    st.markdown("<h2>🔥 Carosello Giornaliero</h2>", unsafe_allow_html=True)
-    render_market_section(today_df, assets_filter="TUTTI")
-    render_trump_section(today_df)
+    if not today_df.empty:
+        st.markdown("<h2>🔥 Carosello Giornaliero</h2>", unsafe_allow_html=True)
+        render_market_section(today_df, assets_filter="TUTTI")
+        render_trump_section(today_df)
+    else:
+        st.warning("⚠️ Nessun dato disponibile per il giorno più recente")
+
 
 # B. SEZIONE TRUMP
 render_trump_section(df if selected_asset=="TUTTI" else df[df['asset_ticker']==selected_asset])
