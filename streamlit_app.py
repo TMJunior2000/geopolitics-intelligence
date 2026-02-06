@@ -65,20 +65,23 @@ with st.sidebar:
 # 5. RENDER SEZIONI
 # A. CAROSELLO
 if not df.empty:
-    # Prendi la data massima disponibile
-    latest_datetime = df['published_at'].max()
-    latest_date = latest_datetime.normalize()  # mezzanotte UTC
-
-    # Filtra tutte le righe di quel giorno
-    today_df = df[(df['published_at'] >= latest_date) &
-                  (df['published_at'] < latest_date + pd.Timedelta(days=1))]
-
-    if not today_df.empty:
-        st.markdown("<h2>🔥 Carosello Giornaliero</h2>", unsafe_allow_html=True)
-        render_market_section(today_df, assets_filter="TUTTI")
-        render_trump_section(today_df)
-    else:
-        st.warning("⚠️ Nessun dato disponibile per il giorno più recente")
+    # --- Assicuriamoci che le date siano in UTC e convertite in locale ---
+    df['published_at'] = pd.to_datetime(df['published_at'], errors='coerce', utc=True)
+    df['published_local'] = df['published_at'].dt.tz_convert('Europe/Rome')
+    
+    # --- Trova l'ultimo giorno con dati disponibili ---
+    if not df['published_local'].empty:
+        latest_day = df['published_local'].dt.date.max()
+        
+        # Filtra tutte le righe di quel giorno
+        today_df = df[df['published_local'].dt.date == latest_day]
+        
+        if not today_df.empty:
+            st.markdown(f"<h2>🔥 Carosello del giorno {latest_day.strftime('%d %b %Y')}</h2>", unsafe_allow_html=True)
+            render_market_section(today_df, assets_filter="TUTTI")
+            render_trump_section(today_df)
+        else:
+            st.warning("⚠️ Nessun dato disponibile per l'ultimo giorno con post")
 
 
 # B. SEZIONE TRUMP
