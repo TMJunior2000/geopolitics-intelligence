@@ -67,6 +67,10 @@ if not today_df.empty:
     render_market_section(today_df, assets_filter="TUTTI")
     render_trump_section(today_df)
     
+st.write("Dati pubblicati oggi:", df['published_at'])
+st.write("Filtro oggi:", pd.Timestamp.today().normalize())
+st.write("today_df:", today_df)    
+    
 # B. SEZIONE TRUMP
 render_trump_section(df if selected_asset=="TUTTI" else df[df['asset_ticker']==selected_asset])
 
