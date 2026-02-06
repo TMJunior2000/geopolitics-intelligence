@@ -59,7 +59,7 @@ def _generate_html_card(row, card_type="VIDEO"):
         video_url = row.get('video_url')
         if isinstance(video_url, pd.Series): video_url = video_url.iloc[0]
         
-        bg_style = "background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);"
+        bg_style = "background: linear-gradient(135deg, #0F766E 0%, #22C55E 100%);"
         raw_title = row.get('video_title') or row.get('asset_name')
         if isinstance(raw_title, pd.Series): raw_title = raw_title.iloc[0]
         display_title = str(raw_title).replace('"', '&quot;')
