@@ -62,13 +62,11 @@ with st.sidebar:
 # 5. RENDER SEZIONI
 # A. CAROSELLO GIORNALIERO
 if not df.empty:
-    # Prendi la data più recente disponibile
-    latest_date = df['published_at'].max().normalize()  # azzera ore/minuti/secondi
-    
-    # Filtra tutte le righe di quella data
-    today_df = df[df['published_at'].notna() &
-                  (df['published_at'] >= latest_date) &
-                  (df['published_at'] < latest_date + pd.Timedelta(days=1))]
+    latest_date_utc = df['published_at'].max().normalize()  # mezzanotte UTC del giorno più recente
+
+    # Filtra tutte le righe di quel giorno (UTC)
+    today_df = df[(df['published_at'] >= latest_date_utc) &
+                (df['published_at'] < latest_date_utc + pd.Timedelta(days=1))]
 
     if not today_df.empty:
         st.markdown("<h2>🔥 Carosello Giornaliero</h2>", unsafe_allow_html=True)
