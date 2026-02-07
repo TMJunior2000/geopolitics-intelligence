@@ -74,7 +74,7 @@ h1, h2, h3 { font-family: 'Space Grotesk', sans-serif; color: #FFFFFF; }
     box-shadow: 0 2px 10px rgba(0,0,0,0.5);
 }
 
-/* --- CONTENUTO (SCROLLABILE) --- */
+/* --- CONTENUTO (SCROLLABLE) --- */
 .w-content {
     padding: 14px;
     display: flex;
