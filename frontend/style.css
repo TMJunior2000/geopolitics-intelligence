@@ -278,3 +278,82 @@ h1, h2, h3 {
 .worldy-carousel::-webkit-scrollbar { height: 8px; }
 .worldy-carousel::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); border-radius: 4px; }
 .worldy-carousel::-webkit-scrollbar-thumb { background: #2ECC71; border-radius: 4px; }
+
+/* --- NUOVI STILI PER DETTAGLI CARD --- */
+
+/* Badge Raccomandazione (LONG/SHORT/WATCH) */
+.rec-badge {
+    font-size: 10px;
+    font-weight: 800;
+    padding: 3px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    display: inline-block;
+    margin-right: 6px;
+}
+.rec-LONG { background: rgba(46, 204, 113, 0.2); color: #2ECC71; border: 1px solid #2ECC71; }
+.rec-SHORT { background: rgba(231, 76, 60, 0.2); color: #E74C3C; border: 1px solid #E74C3C; }
+.rec-WATCH { background: rgba(241, 196, 15, 0.2); color: #F1C40F; border: 1px solid #F1C40F; }
+.rec-HOLD { background: rgba(52, 152, 219, 0.2); color: #3498DB; border: 1px solid #3498DB; }
+
+/* Griglia Livelli Operativi (Entry/Target/Stop) */
+.levels-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr); /* 3 colonne uguali */
+    gap: 5px;
+    margin-top: 10px;
+    margin-bottom: 10px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 8px;
+    padding: 8px;
+}
+
+.level-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.level-label {
+    font-size: 8px;
+    text-transform: uppercase;
+    color: #64748B;
+    letter-spacing: 0.5px;
+    margin-bottom: 2px;
+}
+
+.level-value {
+    font-size: 11px;
+    font-weight: 600;
+    color: #E2E8F0;
+    line-height: 1.1;
+}
+
+/* Key Drivers (Lista Punti) */
+.drivers-box {
+    margin-top: 8px;
+    font-size: 11px;
+    color: #CBD5E1;
+    background: rgba(255,255,255,0.03);
+    padding: 8px;
+    border-radius: 6px;
+}
+
+.driver-item {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 4px;
+}
+.driver-item:last-child { margin-bottom: 0; }
+.driver-dot { color: #2ECC71; margin-right: 6px; font-weight: bold; }
+
+/* Impact Score (Trump) */
+.impact-bar {
+    height: 4px;
+    background: #334155;
+    border-radius: 2px;
+    margin-top: 5px;
+    overflow: hidden;
+}
+.impact-fill { height: 100%; }
