@@ -4,11 +4,15 @@ import pytz  # per gestire timezone
 
 def _generate_html_card(row, card_type="VIDEO", local_tz="Europe/Rome"):
     """
-    Genera l'HTML per una card "Tactical" ricca di dati.
+    Genera l'HTML per una card.
+    Versione MINIFIED: Rimuove spazi e a capo per evitare che Streamlit mostri il codice.
     """
-    # ---------------------------------------------------
-    # 1. PARSING DATA SICURO (Come prima)
-    # ---------------------------------------------------
+    # 1. GESTIONE DATA E TICKER (Logica invariata)
+    tickers = row.get('asset_ticker')
+    if not isinstance(tickers, list): tickers = [tickers] if tickers else []
+    valid_tickers = sorted(list(set([str(t).strip() for t in tickers if t and str(t).lower() not in ['nan', 'none', '']])))
+    tickers_html = "".join(f'<span class="ticker-badge">{t}</span>' for t in valid_tickers)
+
     date_str = ""
     try:
         raw_date = row.get('temp_date') or row.get('published_at') or row.get('created_at')
@@ -16,144 +20,55 @@ def _generate_html_card(row, card_type="VIDEO", local_tz="Europe/Rome"):
             raw_date = raw_date[0] if isinstance(raw_date, list) else raw_date.iloc[0]
         
         if raw_date and str(raw_date).lower() != 'nat':
-            dt = pd.to_datetime(str(raw_date), utc=True).tz_convert(local_tz)
-            date_str = dt.strftime("%d %b %H:%M")
+            dt = pd.to_datetime(str(raw_date), utc=True)
+            dt_local = dt.tz_convert(local_tz)
+            date_str = dt_local.strftime("%d %b %H:%M")
     except: date_str = ""
 
-    # ---------------------------------------------------
-    # 2. TICKER (Badge in basso)
-    # ---------------------------------------------------
-    tickers = row.get('asset_ticker')
-    if not isinstance(tickers, list): tickers = [tickers] if tickers else []
-    valid_tickers = sorted(list(set([str(t).strip() for t in tickers if t and str(t).lower() not in ['nan', 'none', '']])))
-    tickers_html = "".join(f'<span class="ticker-badge">{t}</span>' for t in valid_tickers)
-
-    # ---------------------------------------------------
-    # 3. DATI OPERATIVI (Sentiment, Target, Entry)
-    # ---------------------------------------------------
-    # Estraiamo i dati "sporchi" e li puliamo
-    def get_val(key):
-        val = row.get(key)
-        if isinstance(val, (pd.Series, list)): val = val[0]
-        return str(val) if val and str(val).lower() not in ['nan', 'none', ''] else None
-
-    sentiment = get_val('sentiment') or "Neutral"
-    recommendation = (get_val('recommendation') or "WATCH").upper()
-    time_horizon = get_val('time_horizon') or "Intraday"
-    
-    entry = get_val('entry_zone') or "-"
-    target = get_val('target_price') or "-"
-    stop = get_val('stop_invalidation') or "-"
-
-    # Colore Bordo/Badge basato sulla Raccomandazione
-    if "LONG" in recommendation or "BUY" in recommendation:
-        rec_class = "sig-long"
-        rec_icon = "🟢"
-    elif "SHORT" in recommendation or "SELL" in recommendation:
-        rec_class = "sig-short"
-        rec_icon = "🔴"
-    else:
-        rec_class = "sig-watch"
-        rec_icon = "👁️"
-
-    # ---------------------------------------------------
-    # 4. LOGICA VISIVA DIFFERENZIATA
-    # ---------------------------------------------------
+    # 2. LOGICA VISIVA
     summary = row.get('summary_card') or row.get('video_summary') or row.get('title') or "..."
     summary = str(summary).replace('"', '&quot;')
 
     if card_type == "TRUMP":
-        # --- STILE TRUMP ---
-        badge_text = "TRUMP WATCH"
+        badge_text = "TRUMP POST"
         badge_class = "badge-trump"
         bg_style = "background: linear-gradient(135deg, #002D72 0%, #C8102E 100%);"
-        
-        # Titolo + Impatto
-        display_title = summary
-        if len(display_title) > 130: display_title = display_title[:127] + "..."
-        
-        impact = row.get('impact_score', 0)
-        try: 
-            if isinstance(impact, (pd.Series, list)): impact = max(impact)
-            impact = int(impact)
-        except: impact = 1
-        
-        # Visualizza Impatto come stelle o numero
-        extra_html = f'<div style="color: #F1C40F; font-size: 11px; margin-top:5px;">IMPACT: {"⚡" * impact}</div>'
-        
-        # Per Trump non mostriamo la griglia livelli, ma l'impatto
-        middle_block = f"""
-        <div style="margin: 10px 0;">
-            {extra_html}
-        </div>
-        """
-        footer_text = "GEOPOLITICS"
-        footer_right = f"<span style='color:#E74C3C'><b>{sentiment.upper()}</b></span>"
-
-    else:
-        # --- STILE VIDEO/MARKET ---
-        cat = row.get('channel_style', 'MARKET')
+        display_title = summary if len(summary) < 140 else summary[:137] + "..."
+        score_color = "#E74C3C" # Rosso
+        footer_text = "TRUMP INTEL"
+    else: 
+        cat = row.get('category') or row.get('channel_style', 'MARKET')
         if isinstance(cat, (pd.Series, list)): cat = str(cat[0])
-        badge_text = str(cat).upper()
+        badge_text = str(cat).upper() if cat else "MARKET"
         badge_class = "badge-video"
         bg_style = "background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);"
-        
         display_title = summary
-        
-        # Griglia Livelli Operativi
-        middle_block = f"""
-        <div class="levels-grid">
-            <div class="level-box">
-                <span class="level-label">Entry</span>
-                <span class="level-val">{entry}</span>
-            </div>
-            <div class="level-box">
-                <span class="level-label">Target</span>
-                <span class="level-val" style="color:#2ECC71">{target}</span>
-            </div>
-            <div class="level-box">
-                <span class="level-label">Stop</span>
-                <span class="level-val" style="color:#E74C3C">{stop}</span>
-            </div>
-        </div>
-        """
-        
-        # Footer: Nascondiamo la fonte video (privacy richiesta)
-        footer_text = "MARKET INTEL"
-        footer_right = f"<span class='signal-badge {rec_class}'>{rec_icon} {recommendation}</span>"
+        score_color = "#2ECC71" # Verde
+        footer_text = "VIDEO INTEL"
 
-    # ---------------------------------------------------
-    # 5. ASSEMBLAGGIO HTML
-    # ---------------------------------------------------
+    # 3. HTML MINIFICATO (La correzione chiave è qui sotto)
+    # Usiamo una stringa unica senza indentazioni o newlines che confondano Streamlit
     html = f"""
     <div class="w-card">
         <div class="w-cover" style="{bg_style}">
             <div class="w-badge {badge_class}">{badge_text}</div>
             <div class="w-overlay"></div>
         </div>
-        
         <div class="w-content">
-            
-            <div class="top-meta-row">
-                <span>📅 {date_str}</span>
-                <span>⏳ {time_horizon}</span>
+            <div>
+                <div class="w-meta">{date_str}</div>
+                <div class="w-title">{display_title}</div>
+                <div class="w-tickers">{tickers_html}</div>
             </div>
-
-            <div class="w-title">{display_title}</div>
-            
-            {middle_block}
-
-            <div class="w-tickers" style="margin-top:auto; margin-bottom: 10px;">{tickers_html}</div>
-
             <div class="w-footer">
-                <span style="color: #64748B; font-size: 11px; font-weight:600;">{footer_text}</span>
-                {footer_right}
+                <span style="color: #94A3B8; font-size: 12px;">{footer_text}</span>
+                <span class="w-score" style="color: {score_color};">WATCH</span>
             </div>
         </div>
     </div>
     """
     
-    # Minificazione per evitare che Streamlit mostri codice
+    # Rimuoviamo tutti i ritorni a capo e gli spazi extra
     return " ".join(html.split())
 
 def render_trump_section(df):
