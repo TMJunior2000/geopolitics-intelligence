@@ -5,7 +5,7 @@ import json
 def _generate_html_card(row, card_type="VIDEO", local_tz="Europe/Rome"):
     """
     Genera una SMART CARD HTML che si adatta ai dati disponibili.
-    Include Sentiment, Livelli Tecnici, Driver Fondamentali e Impact Score.
+    Include logica Source ID per colori differenziati (Source 2 = Grigio).
     """
     # ---------------------------------------------------------
     # 1. PARSING DATI & PULIZIA
@@ -16,7 +16,7 @@ def _generate_html_card(row, card_type="VIDEO", local_tz="Europe/Rome"):
     valid_tickers = sorted(list(set([str(t).strip() for t in tickers if t and str(t).lower() not in ['nan', 'none', '']])))
     tickers_html = "".join(f'<span class="ticker-badge">{t}</span>' for t in valid_tickers)
 
-    # Data (Gestione UTC e Formattazione)
+    # Data
     date_str = ""
     try:
         raw_date = row.get('temp_date') or row.get('published_at') or row.get('created_at')
@@ -28,14 +28,12 @@ def _generate_html_card(row, card_type="VIDEO", local_tz="Europe/Rome"):
             date_str = dt.strftime("%d %b %H:%M")
     except: pass
 
-    # Summary/Titolo (Gestito dal CSS w-body per lo scroll)
+    # Summary
     summary = row.get('summary_card') or row.get('video_summary') or row.get('title') or "..."
     summary = str(summary).replace('"', '&quot;')
-    
-    # Tooltip nativo (per leggere tutto passando il mouse)
     tooltip_attr = f'title="{summary}"'
 
-    # Sentiment (Recupero e Stile)
+    # Sentiment
     raw_sent = str(row.get('sentiment', '')).upper()
     sentiment_html = ""
     if raw_sent and raw_sent not in ['NAN', 'NONE', '']:
@@ -43,22 +41,20 @@ def _generate_html_card(row, card_type="VIDEO", local_tz="Europe/Rome"):
         sentiment_html = f'<span style="color:{sent_color}; font-size:9px; font-weight:700; margin-right:8px;">{raw_sent}</span>'
 
     # ---------------------------------------------------------
-    # 2. LOGICA VISIVA (TRUMP vs VIDEO)
+    # 2. LOGICA VISIVA
     # ---------------------------------------------------------
     extra_html = ""
     header_html = ""
     
-    # --- A. CASO TRUMP (Breaking News) ---
+    # --- A. CASO TRUMP ---
     if card_type == "TRUMP":
         badge_text = "TRUMP WATCH"
         bg_style = "background: linear-gradient(135deg, #002D72 0%, #C8102E 100%);"
         footer_label = "TRUTH SOCIAL"
         
-        # Impact Score Bar
         score = row.get('impact_score', 0)
         try: score = int(float(score))
         except: score = 1
-        
         s_color = "#EF4444" if score >= 4 else "#F59E0B"
         pct = min(score * 20, 100)
         
@@ -74,19 +70,23 @@ def _generate_html_card(row, card_type="VIDEO", local_tz="Europe/Rome"):
         </div>
         """
     
-    # --- B. CASO VIDEO (Analisi Mercato) ---
+    # --- B. CASO VIDEO ---
     else:
         style = str(row.get('channel_style', 'MARKET')).upper()
         
-        # Recommendation Badge
+        # Recupera source_id per colori custom
+        try:
+            sid = int(float(row.get('source_id', 0)))
+        except:
+            sid = 0
+
+        # Rec & Horizon
         rec = str(row.get('recommendation', 'WATCH')).upper()
         if rec not in ['LONG', 'SHORT', 'WATCH', 'HOLD']: rec = 'WATCH'
         
-        # Time Horizon
         horizon = row.get('time_horizon')
         hor_html = f'<span style="color:#64748B; font-size:9px; font-weight:600;"> • {horizon}</span>' if horizon else ""
         
-        # Header (Rec Badge + Sentiment + Horizon)
         header_html = f"""
         <div style="margin-bottom:6px; display:flex; align-items:center;">
             <span class="rec-badge rec-{rec}">{rec}</span>
@@ -95,28 +95,20 @@ def _generate_html_card(row, card_type="VIDEO", local_tz="Europe/Rome"):
         </div>
         """
 
-        # --- DISTINZIONE FONTI (Colori e Footer) ---
+        # --- LOGICA STILI & FONTI ---
         if "TECNICA" in style:
-            # Recuperiamo il source_id in modo sicuro (gestendo float/stringhe/NaN)
-            try:
-                sid = int(float(row.get('source_id', 0)))
-            except:
-                sid = 0
-
-            # LOGICA COLORE: Se Source 2 = Grigio, Altrimenti = Blu
+            # === MODIFICA QUI: CONTROLLO SOURCE ID ===
             if sid == 2:
-                # STILE GRIGIO "TITANIUM" (Per Source 2)
+                # Source 2 -> GRIGIO TITANIUM (Slate)
                 bg_style = "background: linear-gradient(135deg, #334155 0%, #64748B 100%);"
-                # Opzionale: se vuoi distinguere anche il badge puoi scrivere "TECNICA FX" o lasciare "TECNICA"
-                badge_text = "TECNICA" 
             else:
-                # STILE BLU (Per tutti gli altri, es. Source 3)
+                # Altre Source (es. 3) -> BLU CLASSICO
                 bg_style = "background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);"
-                badge_text = "TECNICA"
-
+            
+            badge_text = "TECNICA"
             footer_label = "TECHNICAL SETUP"
             
-            # Griglia Prezzi (Entry/Target/Stop) - Solo se esistono
+            # Griglia Prezzi
             entry = row.get('entry_zone')
             target = row.get('target_price')
             stop = row.get('stop_invalidation')
@@ -132,33 +124,29 @@ def _generate_html_card(row, card_type="VIDEO", local_tz="Europe/Rome"):
                 """
 
         elif "QUANT" in style or "CERTIFICA" in str(summary).upper():
-            # Source 3 (Certificati / Quant)
             bg_style = "background: linear-gradient(135deg, #581c87 0%, #a855f7 100%);" # Viola
             badge_text = "STRATEGIA"
             footer_label = "STRATEGY & YIELD"
             
         else:
-            # Source 1 (Fondamentale / Macro)
             bg_style = "background: linear-gradient(135deg, #064e3b 0%, #10b981 100%);" # Verde
             badge_text = "FONDAMENTALE"
             footer_label = "MACRO SCENARIO"
 
-        # Key Drivers (Lista Puntata) - Comune a tutti i video se presente
+        # Key Drivers
         raw_drv = row.get('key_drivers')
         if raw_drv:
             try:
                 if isinstance(raw_drv, str): d_list = json.loads(raw_drv.replace("'", '"'))
                 elif isinstance(raw_drv, list): d_list = raw_drv
                 else: d_list = []
-                
                 if d_list:
-                    # Max 3 driver per non allungare troppo la card
                     lis = "".join(f'<div class="driver-row"><span class="driver-dot">•</span><span class="driver-text">{d}</span></div>' for d in d_list[:3])
                     extra_html += f'<div class="drivers-container">{lis}</div>'
             except: pass
 
     # ---------------------------------------------------------
-    # 3. ASSEMBLAGGIO HTML FINALE
+    # 3. ASSEMBLAGGIO
     # ---------------------------------------------------------
     html = f"""
     <div class="w-card" {tooltip_attr}>
@@ -168,12 +156,10 @@ def _generate_html_card(row, card_type="VIDEO", local_tz="Europe/Rome"):
         <div class="w-content">
             <div class="w-meta">{date_str}</div>
             {header_html}
-            
             <div class="w-body">
                 <div class="w-title">{summary}</div>
                 {extra_html}
             </div>
-
             <div class="w-footer">
                 <span class="footer-label">{footer_label}</span>
                 <div class="w-tickers">{tickers_html}</div>
@@ -181,7 +167,6 @@ def _generate_html_card(row, card_type="VIDEO", local_tz="Europe/Rome"):
         </div>
     </div>
     """
-    
     return " ".join(html.split())
 
 
