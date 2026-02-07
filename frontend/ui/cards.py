@@ -106,7 +106,7 @@ def _generate_html_card(row, card_type="VIDEO", local_tz="Europe/Rome"):
                 bg_style = "background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);"
             
             badge_text = "TECNICA"
-            footer_label = f"TECH SETUP (SID: {sid})"
+            footer_label = "TECHNICAL SETUP"
             
             # Griglia Prezzi
             entry = row.get('entry_zone')

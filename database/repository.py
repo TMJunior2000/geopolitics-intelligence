@@ -236,6 +236,7 @@ class MarketRepository:
                 source = feed.get('sources', {}) or {}
                 
                 # Mapping dei dati piatti per Streamlit
+                item['source_id'] = feed.get('source_id')
                 item['source_name'] = source.get('name', 'Unknown')
                 item['video_title'] = feed.get('title')
                 item['published_at'] = feed.get('published_at')
