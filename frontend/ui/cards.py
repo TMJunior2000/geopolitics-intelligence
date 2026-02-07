@@ -1,15 +1,13 @@
 import streamlit as st
 import pandas as pd
-import pytz  # per gestire timezone
-
 import json
 
 def _generate_html_card(row, card_type="VIDEO", local_tz="Europe/Rome"):
     """
-    Genera una card ricca di informazioni, nascondendo i campi vuoti.
+    Genera una SMART CARD che si adatta ai dati disponibili (Tecnici, Fondamentali o Macro).
     """
     # ---------------------------------------------------------
-    # 1. PARSING DATI GREZZI
+    # 1. PARSING DATI BASE
     # ---------------------------------------------------------
     # Tickers
     tickers = row.get('asset_ticker')
@@ -17,11 +15,12 @@ def _generate_html_card(row, card_type="VIDEO", local_tz="Europe/Rome"):
     valid_tickers = sorted(list(set([str(t).strip() for t in tickers if t and str(t).lower() not in ['nan', 'none', '']])))
     tickers_html = "".join(f'<span class="ticker-badge">{t}</span>' for t in valid_tickers)
 
-    # Data
+    # Data (Logica Blindata)
     date_str = ""
     try:
         raw_date = row.get('temp_date') or row.get('published_at') or row.get('created_at')
-        if isinstance(raw_date, (pd.Series, list)): raw_date = raw_date[0] if len(raw_date)>0 else None
+        if isinstance(raw_date, (pd.Series, list)): 
+            raw_date = raw_date[0] if len(raw_date)>0 else None
         
         if raw_date and str(raw_date).lower() != 'nat':
             dt = pd.to_datetime(str(raw_date), utc=True).tz_convert(local_tz)
@@ -33,143 +32,143 @@ def _generate_html_card(row, card_type="VIDEO", local_tz="Europe/Rome"):
     summary = str(summary).replace('"', '&quot;')
     
     # ---------------------------------------------------------
-    # 2. SEZIONE SPECIFICA: DATI OPERATIVI (Solo se presenti)
+    # 2. SEZIONE VARIABILE (Il cuore della logica)
     # ---------------------------------------------------------
-    # Recommendation (LONG, SHORT, WATCH)
-    rec = str(row.get('recommendation', 'WATCH')).upper()
-    if rec not in ['LONG', 'SHORT', 'WATCH', 'HOLD']: rec = 'WATCH'
+    variable_content_html = ""
     
-    # Time Horizon
-    horizon = row.get('time_horizon')
-    horizon_html = f'<span style="font-size:10px; color:#94A3B8; margin-left:5px;">| {horizon}</span>' if horizon else ""
-
-    # Livelli Operativi (Griglia)
-    entry = row.get('entry_zone')
-    target = row.get('target_price')
-    stop = row.get('stop_invalidation')
-    
-    # Mostra la griglia SOLO se almeno uno dei valori esiste
-    levels_html = ""
-    if entry or target or stop:
-        # Helper per formattare valori nulli come trattini
-        def fmt(val): return str(val) if val and str(val).lower() != 'nan' else "-"
-        
-        levels_html = f"""
-        <div class="levels-grid">
-            <div class="level-box">
-                <div class="level-label">ENTRY</div>
-                <div class="level-value" style="color:#60A5FA">{fmt(entry)}</div>
-            </div>
-            <div class="level-box">
-                <div class="level-label">TARGET</div>
-                <div class="level-value" style="color:#2ECC71">{fmt(target)}</div>
-            </div>
-            <div class="level-box">
-                <div class="level-label">STOP</div>
-                <div class="level-value" style="color:#F87171">{fmt(stop)}</div>
-            </div>
-        </div>
-        """
-
-    # Key Drivers (Lista Punti)
-    drivers_html = ""
-    raw_drivers = row.get('key_drivers')
-    if raw_drivers:
-        try:
-            # Se è una stringa che sembra una lista, prova a parsificarla
-            if isinstance(raw_drivers, str) and raw_drivers.startswith('['):
-                drivers_list = json.loads(raw_drivers.replace("'", '"')) # Fix quote semplici
-            elif isinstance(raw_drivers, list):
-                drivers_list = raw_drivers
-            else:
-                drivers_list = []
-            
-            if drivers_list:
-                list_items = "".join(f'<div class="driver-item"><span class="driver-dot">•</span>{d}</div>' for d in drivers_list[:3]) # Max 3 drivers
-                drivers_html = f'<div class="drivers-box">{list_items}</div>'
-        except:
-            pass # Se fallisce il parsing, non mostra nulla
-
-    # ---------------------------------------------------------
-    # 3. STILE VISIVO (TRUMP vs VIDEO)
-    # ---------------------------------------------------------
+    # A. SEZIONE TRUMP / MACRO (Priorità: Impact Score)
     if card_type == "TRUMP":
-        badge_text = "TRUMP WATCH"
-        badge_class = "badge-trump"
-        bg_style = "background: linear-gradient(135deg, #002D72 0%, #C8102E 100%);"
-        footer_text = "TRUMP INTEL"
-        
-        # Titolo più lungo per Trump dato che non ha livelli tecnici di solito
-        display_title = summary if len(summary) < 160 else summary[:157] + "..."
-        
-        # Impact Score Bar
         score = row.get('impact_score', 0)
         try: score = int(float(score))
         except: score = 1
         
         score_color = "#E74C3C" if score >= 4 else "#F1C40F"
-        # Visualizzazione grafica score (Barra)
         width_pct = min(score * 20, 100) # 5 = 100%
-        levels_html = f"""
-        <div style="margin-top:10px;">
-            <div style="display:flex; justify-content:space-between; font-size:10px; color:#CBD5E1; margin-bottom:2px;">
+        
+        variable_content_html = f"""
+        <div class="impact-container">
+            <div class="impact-header">
                 <span>IMPACT SCORE</span>
                 <span style="color:{score_color}; font-weight:bold;">{score}/5</span>
             </div>
-            <div class="impact-bar"><div class="impact-fill" style="width:{width_pct}%; background:{score_color};"></div></div>
+            <div class="impact-track"><div class="impact-bar" style="width:{width_pct}%; background:{score_color};"></div></div>
         </div>
         """
-        # Trump di solito non ha drivers tecnici, quindi usiamo lo spazio per questo
+        display_title = summary if len(summary) < 160 else summary[:157] + "..."
+        footer_label = "TRUMP INTEL"
+        badge_text = "TRUMP WATCH"
+        badge_class = "badge-trump"
+        bg_style = "background: linear-gradient(135deg, #002D72 0%, #C8102E 100%);"
+        header_extra = "" 
 
-    else: # VIDEO
+    # B. SEZIONE VIDEO (Priorità: Livelli -> Drivers)
+    else:
+        # Recommendation Badge (LONG/SHORT/WATCH)
+        rec = str(row.get('recommendation', 'WATCH')).upper()
+        if rec not in ['LONG', 'SHORT', 'WATCH', 'HOLD']: rec = 'WATCH'
+        
+        # Horizon
+        horizon = row.get('time_horizon')
+        horizon_html = f'<span class="horizon-tag"> • {horizon}</span>' if horizon else ""
+        
+        header_extra = f"""
+        <div style="margin-bottom:6px;">
+            <span class="rec-badge rec-{rec}">{rec}</span>
+            {horizon_html}
+        </div>
+        """
+
+        # 1. Griglia Livelli (Solo se esistono dati validi)
+        entry = row.get('entry_zone')
+        target = row.get('target_price')
+        stop = row.get('stop_invalidation')
+        
+        levels_html = ""
+        # Mostra la griglia solo se c'è almeno un dato tecnico rilevante
+        if (entry or target or stop) and str(entry).lower() != 'nan':
+            def fmt(v): return str(v) if v and str(v).lower() not in ['nan', 'none', 'null'] else "-"
+            
+            levels_html = f"""
+            <div class="levels-container">
+                <div class="level-box">
+                    <div class="level-label">Entry</div>
+                    <div class="level-val" style="color:#60A5FA">{fmt(entry)}</div>
+                </div>
+                <div class="level-box">
+                    <div class="level-label">Target</div>
+                    <div class="level-val" style="color:#2ECC71">{fmt(target)}</div>
+                </div>
+                <div class="level-box">
+                    <div class="level-label">Stop</div>
+                    <div class="level-val" style="color:#F87171">{fmt(stop)}</div>
+                </div>
+            </div>
+            """
+
+        # 2. Key Drivers (Parsing JSON)
+        drivers_html = ""
+        raw_drivers = row.get('key_drivers')
+        if raw_drivers:
+            try:
+                # Gestione stringa JSON o Lista diretta
+                if isinstance(raw_drivers, str):
+                    # Pulizia stringa da caratteri strani se necessario
+                    drivers_list = json.loads(raw_drivers.replace("'", '"'))
+                elif isinstance(raw_drivers, list):
+                    drivers_list = raw_drivers
+                else:
+                    drivers_list = []
+                
+                # Prendi max 2-3 driver per non esplodere la card
+                if drivers_list:
+                    list_items = "".join(f'<div class="driver-row"><span class="driver-dot">•</span><span class="driver-text">{d}</span></div>' for d in drivers_list[:2])
+                    drivers_html = f'<div class="drivers-container">{list_items}</div>'
+            except: pass
+
+        # Composizione Contenuto Variabile (Livelli + Drivers)
+        variable_content_html = levels_html + drivers_html
+        
+        # Stili Generici Video
         cat = row.get('channel_style', 'MARKET')
+        if isinstance(cat, (pd.Series, list)): cat = str(cat[0])
         badge_text = str(cat).upper() if cat else "MARKET"
         badge_class = "badge-video"
         
-        # Colore Header in base al sentiment/channel style
+        # Colore Header in base al tipo
         if "TECNICA" in badge_text:
-            bg_style = "background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);" # Blu Tecnico
+            bg_style = "background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);" # Blu
         elif "QUANT" in badge_text:
-            bg_style = "background: linear-gradient(135deg, #581c87 0%, #8b5cf6 100%);" # Viola Quant
+            bg_style = "background: linear-gradient(135deg, #581c87 0%, #8b5cf6 100%);" # Viola
         else:
-            bg_style = "background: linear-gradient(135deg, #064e3b 0%, #10b981 100%);" # Verde Fondamentale
+            bg_style = "background: linear-gradient(135deg, #064e3b 0%, #10b981 100%);" # Verde
 
         display_title = summary if len(summary) < 110 else summary[:107] + "..."
-        footer_text = "MARKET INTEL" # Generico, nasconde il canale
+        footer_label = "MARKET INTEL"
         score_color = "#2ECC71"
 
     # ---------------------------------------------------------
-    # 4. ASSEMBLAGGIO HTML
+    # 3. ASSEMBLAGGIO FINALE HTML
     # ---------------------------------------------------------
-    # Header Content (Rec Badge + Title)
-    header_content = f"""
-    <div style="margin-bottom:8px;">
-        <span class="rec-badge rec-{rec}">{rec}</span>
-        {horizon_html}
-    </div>
-    <div class="w-title" style="font-size:15px; margin-bottom:0;">{display_title}</div>
-    """
-
     html = f"""
     <div class="w-card">
-        <div class="w-cover" style="{bg_style}; height: 140px;">
+        <div class="w-cover" style="{bg_style}">
             <div class="w-badge {badge_class}">{badge_text}</div>
             <div class="w-overlay"></div>
         </div>
-        <div class="w-content" style="padding:12px;">
+        <div class="w-content">
             <div style="margin-bottom:8px;">
                 <div class="w-meta" style="margin-bottom:4px;">{date_str}</div>
-                {header_content}
+                {header_extra}
             </div>
             
             <div style="flex:1;">
-                {levels_html}
-                {drivers_html}
+                <div class="w-title">{display_title}</div>
+                {variable_content_html}
             </div>
 
-            <div class="w-footer" style="margin-top:10px;">
-                <span style="color: #94A3B8; font-size: 11px; text-transform:uppercase; letter-spacing:0.5px;">{footer_text}</span>
-                <div class="w-tickers" style="margin:0; position:relative; bottom:0;">{tickers_html}</div>
+            <div class="w-footer">
+                <span style="color: #94A3B8; font-size: 11px;">{footer_label}</span>
+                <div class="w-tickers">{tickers_html}</div>
             </div>
         </div>
     </div>
