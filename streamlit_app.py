@@ -3,25 +3,9 @@ import pandas as pd
 from database.repository import MarketRepository
 from frontend.ui.styles import load_css
 from frontend.ui.cards import render_trump_section, render_carousel, render_all_assets_sections, _generate_html_card, render_market_section
-import streamlit.components.v1 as components
 
 # 1. SETUP & DATI
 st.set_page_config(page_title="Kairos", page_icon="🦅", layout="wide")
-
-# --- TRUCCO PER RIMUOVERE "STREAMLIT" DAL TITOLO ---
-# Iniettiamo un Javascript che forza il titolo del documento
-js = """
-<script>
-    var observer = new MutationObserver(function(mutations) {
-        if (document.title !== "Kairos") {
-            document.title = "Kairos";
-        }
-    });
-    observer.observe(document.querySelector('title'), { childList: true });
-</script>
-"""
-components.html(js, height=0, width=0)
-
 load_css("style.css")
 
 @st.cache_data(ttl=300)
