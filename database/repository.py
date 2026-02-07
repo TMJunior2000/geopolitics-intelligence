@@ -209,7 +209,7 @@ class MarketRepository:
                     "stop_invalidation": item.get("stop_invalidation"),
                     "key_drivers": item.get("key_drivers", []),
                     "summary_card": item.get("summary_card", "")[:500],
-                    "impact_score": 0 # Default per i video normali
+                    "impact_score": 0 # Default per i video normal
                 })
 
             if rows_to_insert:
