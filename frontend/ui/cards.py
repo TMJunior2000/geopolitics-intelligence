@@ -35,7 +35,7 @@ def _generate_html_card(row, card_type="VIDEO", local_tz="Europe/Rome"):
         bg_style = "background: linear-gradient(135deg, #002D72 0%, #C8102E 100%);"
         display_title = summary if len(summary) < 140 else summary[:137] + "..."
         score_color = "#E74C3C" # Rosso
-        footer_text = "TRUMP POST"
+        footer_text = "TRUMP INTEL"
     else: 
         cat = row.get('category') or row.get('channel_style', 'MARKET')
         if isinstance(cat, (pd.Series, list)): cat = str(cat[0])
@@ -44,7 +44,7 @@ def _generate_html_card(row, card_type="VIDEO", local_tz="Europe/Rome"):
         bg_style = "background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);"
         display_title = summary
         score_color = "#2ECC71" # Verde
-        footer_text = "VIDEO"
+        footer_text = "VIDEO INTEL"
 
     # 3. HTML MINIFICATO (La correzione chiave è qui sotto)
     # Usiamo una stringa unica senza indentazioni o newlines che confondano Streamlit
