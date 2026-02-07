@@ -1,236 +1,170 @@
 /* =============================================================================
-   1. GLOBAL, FONTS & SCROLLBARS
+   1. GLOBAL & FONTS
    ============================================================================= */
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Inter:wght@400;500;600&display=swap');
 
-/* Sfondo Applicazione */
 .stApp {
-    background-color: #020617;
-    background: radial-gradient(circle at 50% 0%, #1e293b 0%, #020617 70%);
+    background: radial-gradient(circle at top, #0F172A 0%, #020617 70%);
     font-family: 'Inter', sans-serif;
 }
 
 h1, h2, h3 {
     font-family: 'Space Grotesk', sans-serif;
+    color: #FFFFFF;
+}
+
+/* =============================================================================
+   2. SIDEBAR "DELIZIOSA" (GLASSMORPHISM)
+   ============================================================================= */
+section[data-testid="stSidebar"] {
+    background-color: transparent !important;
+    background: linear-gradient(180deg, #020617 0%, #0F172A 100%);
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Titoli Sidebar */
+section[data-testid="stSidebar"] h1, 
+section[data-testid="stSidebar"] h2, 
+section[data-testid="stSidebar"] h3 {
     color: #F8FAFC;
-    letter-spacing: -0.5px;
+    font-family: 'Space Grotesk', sans-serif;
+    letter-spacing: 1px;
 }
 
-/* Nascondi Sidebar Nativa e Footer */
-[data-testid="stSidebar"], [data-testid="collapsedControl"], footer {
-    display: none !important;
-}
-
-/* Scrollbar Generale Webkit (Chrome/Safari) */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); border-radius: 3px; }
-::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #2ECC71; }
-
-/* =============================================================================
-   2. NAVIGATION BAR (CHIPS STYLE - NO PALLINI)
-   ============================================================================= */
-
-/* Contenitore Radio Button */
-[data-testid="stRadio"] > div {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: nowrap !important;
-    overflow-x: auto;
-    gap: 12px;
-    padding-bottom: 8px;
-    align-items: center;
-}
-
-/* Nascondi il cerchio del radio button */
-div[role="radiogroup"] label > div:first-child {
-    display: none !important;
-}
-
-/* Stile Bottone (Label) */
-div[role="radiogroup"] label {
-    background: rgba(30, 41, 59, 0.4) !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    border-radius: 12px !important;
-    padding: 8px 20px !important;
-    min-width: fit-content;
-    margin: 0 !important;
-    transition: all 0.2s ease;
-    cursor: pointer;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-}
-
-/* Testo Bottone */
-div[role="radiogroup"] label p {
-    font-family: 'Space Grotesk', sans-serif !important;
-    font-weight: 600 !important;
-    font-size: 13px !important;
-    color: #94A3B8 !important;
-}
-
-/* Hover */
-div[role="radiogroup"] label:hover {
-    border-color: #2ECC71 !important;
-    background: rgba(46, 204, 113, 0.1) !important;
-    transform: translateY(-2px);
-}
-
-/* Selezionato (Active) */
-div[role="radiogroup"] label[data-checked="true"] {
-    background: linear-gradient(135deg, #0F766E 0%, #22C55E 100%) !important;
-    border: 1px solid #2ECC71 !important;
-    box-shadow: 0 0 20px rgba(46, 204, 113, 0.25) !important;
-}
-
-div[role="radiogroup"] label[data-checked="true"] p {
-    color: #FFFFFF !important;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
-}
-
-/* =============================================================================
-   3. SEARCH BAR (SELECTBOX STYLING)
-   ============================================================================= */
-
-/* Nascondi Label */
-div[data-testid="stSelectbox"] label { display: none; }
-
-/* Barra di Input */
+/* Selectbox e Input Custom */
 div[data-testid="stSelectbox"] > div > div {
-    background-color: rgba(15, 23, 42, 0.6) !important;
-    border: 1px solid rgba(255, 255, 255, 0.15) !important;
-    border-radius: 12px !important;
-    color: white !important;
-    min-height: 42px;
-    backdrop-filter: blur(10px);
+    background-color: rgba(30, 41, 59, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    border-radius: 8px;
+    backdrop-filter: blur(8px);
+    transition: border-color 0.2s;
 }
 
-/* Focus */
-div[data-testid="stSelectbox"] > div > div:focus-within {
-    border-color: #2ECC71 !important;
-    box-shadow: 0 0 15px rgba(46, 204, 113, 0.15);
+div[data-testid="stSelectbox"] > div > div:hover {
+    border-color: #2ECC71;
 }
 
-/* Icona Freccia */
-div[data-testid="stSelectbox"] svg { fill: #64748B !important; }
+div[data-baseweb="select"] span {
+    color: #E2E8F0 !important;
+}
 
-/* Menu a tendina */
-div[data-baseweb="popover"] {
-    background-color: #0F172A !important;
+/* Pulsante Refresh */
+div.stButton > button {
+    width: 100%;
+    background: linear-gradient(90deg, #1e293b 0%, #334155 100%);
     border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 12px;
-    padding: 5px;
-}
-
-/* Opzioni */
-div[data-baseweb="menu"] li {
-    color: #CBD5E1 !important;
-    font-family: 'Inter', sans-serif;
-    border-radius: 6px;
-    margin-bottom: 2px;
-}
-
-/* Opzione Hover/Selected */
-div[data-baseweb="menu"] li[aria-selected="true"],
-div[data-baseweb="menu"] li:hover {
-    background-color: rgba(46, 204, 113, 0.15) !important;
-    color: #2ECC71 !important;
+    color: #E2E8F0;
+    border-radius: 8px;
+    font-family: 'Space Grotesk', sans-serif;
     font-weight: 600;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+div.stButton > button:hover {
+    border-color: #2ECC71;
+    color: #2ECC71;
+    background: linear-gradient(90deg, #1e293b 0%, #0f172a 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(46, 204, 113, 0.15);
+}
+
+/* Separatore */
+section[data-testid="stSidebar"] hr {
+    margin: 2em 0;
+    border-color: rgba(255, 255, 255, 0.1);
 }
 
 /* =============================================================================
-   4. LAYOUT CONTAINERS
+   3. LAYOUT CONTAINERS (CAROSELLO & GRIGLIA)
    ============================================================================= */
 
-/* Carosello */
+/* Carosello Orizzontale (Scroll) */
 .worldy-carousel {
     display: flex;
     overflow-x: auto;
     gap: 20px;
     padding: 10px 5px 30px 5px;
     scroll-snap-type: x mandatory;
+    scrollbar-width: thin;
+    scrollbar-color: #2ECC71 #0F172A;
 }
 
-/* Griglia */
+/* Griglia Verticale (Archivio) */
 .worldy-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
-    gap: 24px;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
     padding: 10px 0;
 }
 
-/* Headers Sezioni */
-.section-header {
-    border-left: 4px solid;
-    padding-left: 15px;
-    margin: 40px 0 20px 0;
-}
-.header-trump { border-color: #E74C3C; }
-.header-market { border-color: #2ECC71; }
+/* Stile Scrollbar Generale per i container */
+.worldy-carousel::-webkit-scrollbar { height: 6px; }
+.worldy-carousel::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); border-radius: 3px; }
+.worldy-carousel::-webkit-scrollbar-thumb { background: #2ECC71; border-radius: 3px; }
 
 /* =============================================================================
-   5. SMART CARD SYSTEM
+   4. SMART CARD SYSTEM
    ============================================================================= */
 
-/* Card Container */
+/* Card Base Container */
 .w-card {
     position: relative;
     border-radius: 16px;
     overflow: hidden;
-    background: rgba(30, 41, 59, 0.4); /* Glass Dark */
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    background: rgba(15, 23, 42, 0.8);
+    backdrop-filter: blur(16px);
     border: 1px solid rgba(255, 255, 255, 0.08);
     display: flex;
     flex-direction: column;
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    transition: transform 0.2s, border-color 0.2s;
 }
 
-/* Dimensioni Fisse Carosello */
+/* Dimensioni nel Carosello */
 .worldy-carousel .w-card {
-    min-width: 320px;
-    width: 320px;
-    height: 480px; /* Spazio verticale abbondante */
+    min-width: 310px;
+    width: 310px;
+    height: 460px;
     flex: 0 0 auto;
     scroll-snap-align: start;
 }
 
-/* Dimensioni Fisse Griglia */
+/* Dimensioni nella Griglia */
 .worldy-grid .w-card {
-    height: 480px; /* Uniformità anche nella griglia */
-    min-height: 480px;
+    height: 100%;
+    min-height: 420px;
 }
 
-/* Hover Effect */
 .w-card:hover {
-    transform: translateY(-6px);
-    border-color: rgba(255,255,255,0.2);
-    box-shadow: 0 20px 40px -5px rgba(0, 0, 0, 0.5);
+    border-color: rgba(255,255,255,0.25);
+    transform: translateY(-4px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
 }
 
-/* Cover Image */
+/* Cover Image & Badges */
 .w-cover {
-    height: 140px;
+    height: 130px;
     width: 100%;
     position: relative;
     flex-shrink: 0;
 }
 
-/* Badge sopra Cover */
 .w-badge {
-    position: absolute; top: 12px; left: 12px;
+    position: absolute; top: 10px; left: 10px;
     padding: 4px 10px; border-radius: 6px;
     font-size: 10px; font-weight: 800;
     text-transform: uppercase; letter-spacing: 0.5px;
     color: white; z-index: 2;
-    background: rgba(0,0,0,0.3);
-    backdrop-filter: blur(4px);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
 }
 
-/* Contenuto */
+/* Contenuto Principale */
 .w-content {
-    padding: 16px;
+    padding: 14px;
     display: flex;
     flex-direction: column;
     flex-grow: 1;
@@ -238,86 +172,101 @@ div[data-baseweb="menu"] li:hover {
 }
 
 .w-meta {
-    font-size: 10px; color: #94A3B8; margin-bottom: 8px;
+    font-size: 10px; color: #94A3B8; margin-bottom: 6px;
     font-family: 'Space Grotesk', monospace; letter-spacing: 0.5px;
 }
 
-/* Body Scrollabile (Magia Anti-Troncamento) */
+/* Body Scrollabile (Il testo non viene mai tagliato) */
 .w-body {
     flex-grow: 1;
     overflow-y: auto;
     padding-right: 4px;
-    margin-bottom: 12px;
-    /* Nascondi scrollbar finché non serve */
+    margin-bottom: 10px;
     scrollbar-width: thin;
-    scrollbar-color: #475569 transparent;
+    scrollbar-color: #334155 transparent;
 }
+.w-body::-webkit-scrollbar { width: 3px; }
+.w-body::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
 
 .w-title {
     font-family: 'Inter', sans-serif;
-    font-size: 16px; font-weight: 600; line-height: 1.4;
+    font-size: 15px; font-weight: 600; line-height: 1.45;
     color: #F1F5F9; margin-bottom: 12px;
 }
 
 /* =============================================================================
-   6. COMPONENTI INTERNI (Livelli, Driver, Impact)
+   5. COMPONENTI INTERNI (Smart Data)
    ============================================================================= */
 
 /* Griglia Livelli (Entry/Target/Stop) */
 .levels-container {
     display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px;
     margin-bottom: 12px;
-    background: rgba(2, 6, 23, 0.4);
-    border-radius: 8px; padding: 8px 4px;
+    background: rgba(0,0,0,0.3); border-radius: 6px; padding: 6px;
     border: 1px solid rgba(255,255,255,0.05);
 }
 .level-box { text-align: center; }
-.level-label { font-size: 8px; color: #64748B; text-transform: uppercase; font-weight: 700; margin-bottom: 2px; }
-.level-val { font-size: 11px; font-weight: 700; color: #F8FAFC; white-space: nowrap; }
+.level-label { font-size: 8px; color: #64748B; text-transform: uppercase; font-weight: 700; }
+.level-val { font-size: 11px; font-weight: 700; color: #F8FAFC; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
 
-/* Key Drivers */
+/* Key Drivers List */
 .drivers-container {
     background: rgba(255,255,255,0.03);
-    border-radius: 8px; padding: 10px;
+    border-radius: 6px; padding: 8px;
     margin-bottom: 10px;
-    border-left: 3px solid #2ECC71;
+    border-left: 2px solid #2ECC71;
 }
-.driver-row { display: flex; align-items: start; margin-bottom: 6px; }
+.driver-row { display: flex; align-items: start; margin-bottom: 4px; }
 .driver-text { font-size: 11px; color: #CBD5E1; line-height: 1.3; }
-.driver-dot { color: #2ECC71; margin-right: 8px; font-size: 10px; margin-top: 3px; }
+.driver-dot { color: #2ECC71; margin-right: 6px; font-size: 14px; line-height: 10px; }
 
-/* Impact Score */
-.impact-bar-container { margin: 15px 0; }
+/* Impact Score Bar */
+.impact-bar-container { margin: 10px 0; }
 .impact-track { width: 100%; height: 6px; background: #1E293B; border-radius: 3px; }
-.impact-fill { height: 100%; border-radius: 3px; }
+.impact-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
 
-/* Badges Rec */
-.rec-badge { font-size: 9px; font-weight: 800; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; margin-right: 6px; }
-.rec-LONG { color: #4ADE80; background: rgba(74, 222, 128, 0.1); border: 1px solid rgba(74, 222, 128, 0.2); }
-.rec-SHORT { color: #F87171; background: rgba(248, 113, 113, 0.1); border: 1px solid rgba(248, 113, 113, 0.2); }
-.rec-WATCH { color: #FBBF24; background: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.2); }
+/* Recommendation Badges */
+.rec-badge { font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 3px; text-transform: uppercase; margin-right: 6px; }
+.rec-LONG { color: #2ECC71; background: rgba(46, 204, 113, 0.15); border: 1px solid rgba(46, 204, 113, 0.3); }
+.rec-SHORT { color: #E74C3C; background: rgba(231, 76, 60, 0.15); border: 1px solid rgba(231, 76, 60, 0.3); }
+.rec-WATCH { color: #F1C40F; background: rgba(241, 196, 15, 0.15); border: 1px solid rgba(241, 196, 15, 0.3); }
+.rec-HOLD { color: #3498DB; background: rgba(52, 152, 219, 0.15); border: 1px solid rgba(52, 152, 219, 0.3); }
+
+/* Horizon Tag */
+.horizon-tag { font-size: 9px; color: #94A3B8; text-transform: uppercase; font-weight: 600; }
 
 /* =============================================================================
-   7. FOOTER CARD
+   6. FOOTER CARD
    ============================================================================= */
 .w-footer {
     margin-top: auto;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding-top: 10px;
     display: flex; justify-content: space-between; align-items: center;
     flex-shrink: 0;
 }
 
 .footer-label {
-    font-size: 9px; font-weight: 800; color: #475569;
-    text-transform: uppercase; letter-spacing: 1px;
+    font-size: 9px; font-weight: 700;
+    color: #64748B;
+    text-transform: uppercase; letter-spacing: 0.5px;
 }
 
-.w-tickers { display: flex; flex-wrap: wrap; gap: 4px; max-width: 60%; justify-content: flex-end; }
+.w-tickers { display: flex; flex-wrap: wrap; gap: 4px; max-width: 65%; justify-content: flex-end; }
 
 .ticker-badge {
-    background: #0F172A; color: #E2E8F0;
-    font-size: 9px; font-weight: 700; padding: 3px 8px;
-    border-radius: 6px; border: 1px solid #334155;
-    white-space: nowrap;
+    background: #1E293B; color: #E2E8F0;
+    font-size: 9px; font-weight: 600; padding: 2px 6px;
+    border-radius: 4px; border: 1px solid rgba(255,255,255,0.1);
 }
+
+/* =============================================================================
+   7. SEZIONI HEADER (Titoli Pagina)
+   ============================================================================= */
+.section-header {
+    border-left: 4px solid;
+    padding-left: 15px;
+    margin: 40px 0 20px 0;
+}
+.header-trump { border-color: #E74C3C; }
+.header-market { border-color: #2ECC71; }
