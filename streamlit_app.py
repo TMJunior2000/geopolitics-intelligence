@@ -2,106 +2,92 @@ import streamlit as st
 import pandas as pd
 from database.repository import MarketRepository
 from frontend.ui.styles import load_css
-# Importa la funzione _generate_html_card se serve per il rendering personalizzato
-from frontend.ui.cards import render_trump_section, render_carousel, render_all_assets_sections, _generate_html_card
+from frontend.ui.cards import render_trump_section, render_carousel, render_all_assets_sections, _generate_html_card, render_market_section
 
-# 1. SETUP PAGINA
+# 1. SETUP & DATI
 st.set_page_config(page_title="Trading Intel", layout="wide", page_icon="🦅")
 load_css("style.css")
 
-# 2. CARICAMENTO DATI
 @st.cache_data(ttl=300)
 def load_data():
     try:
         repo = MarketRepository()
         raw = repo.get_all_insights_flat()
         if not raw: return pd.DataFrame()
-        
         df = pd.DataFrame(raw)
-        if 'published_at' in df.columns:
-            df['published_at'] = pd.to_datetime(df['published_at'], errors='coerce', utc=True)
-        if 'created_at' in df.columns:
-            df['created_at'] = pd.to_datetime(df['created_at'], errors='coerce', utc=True)
-        
+        # Conversione date
+        for col in ['published_at', 'created_at']:
+            if col in df.columns:
+                df[col] = pd.to_datetime(df[col], errors='coerce', utc=True)
         return df.sort_values(by='published_at', ascending=False)
     except Exception as e:
-        st.error(f"DB Error: {e}")
         return pd.DataFrame()
 
 df = load_data()
 
 # ---------------------------------------------------------
-# 3. HEADER & NAVIGAZIONE (NUOVO STILE)
+# 3. HEADER & NAVIGAZIONE IBRIDA
 # ---------------------------------------------------------
 
-# Header
+# Titolo
 st.markdown("""
-<div style="padding: 20px 0 10px 0; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 20px;">
-    <h1 style="font-size: 42px; letter-spacing: -1px; margin-bottom: 0;">Worldy <span style="color:#2ECC71">Finance</span> AI</h1>
-    <p style="color: #94A3B8; font-size: 16px;">Intelligence Platform for Modern Traders</p>
+<div style="padding: 10px 0 0 0; margin-bottom: 10px;">
+    <h1 style="font-size: 38px; letter-spacing: -1px; margin: 0;">Worldy <span style="color:#2ECC71">Finance</span> AI</h1>
 </div>
 """, unsafe_allow_html=True)
 
 if df.empty:
-    st.warning("⚠️ In attesa di dati...")
+    st.warning("⚠️ Caricamento dati...")
     st.stop()
 
-# --- NAVIGATION BAR (CHIPS) ---
-# Estrai ticker unici
-all_tickers_raw = df['asset_ticker'].dropna().astype(str).unique().tolist()
-all_tickers_clean = sorted([t for t in all_tickers_raw if t.strip() != ''])
+# --- LAYOUT NAVIGAZIONE (2 Colonne) ---
+col_nav, col_search = st.columns([2, 1]) # 2/3 Navigazione, 1/3 Ricerca
 
-# Creiamo le opzioni: La prima è "DASHBOARD" (ex TUTTI), poi gli asset
-nav_options = ["🦅 DASHBOARD"] + all_tickers_clean
+# A. Colonna Sinistra: CHIPS (Macro Categorie)
+with col_nav:
+    # Menu orizzontale
+    nav_options = ["🦅 DASHBOARD", "🇺🇸 TRUMP WATCH", "🧠 MARKET INSIGHTS"]
+    selected_view = st.radio("Nav", options=nav_options, horizontal=True, label_visibility="collapsed")
 
-# Renderizziamo i "Chips" orizzontali
-selected_nav = st.radio(
-    "Navigazione", 
-    options=nav_options, 
-    horizontal=True, 
-    label_visibility="collapsed" # Nasconde l'etichetta "Navigazione"
-)
-
-# Mappiamo la selezione (rimuoviamo l'emoji per il filtro logico)
-selected_asset = "TUTTI" if selected_nav == "🦅 DASHBOARD" else selected_nav
+# B. Colonna Destra: RICERCA ASSET (Dropdown)
+with col_search:
+    # Estrai ticker unici
+    all_tickers = sorted(df['asset_ticker'].dropna().astype(str).unique().tolist())
+    # Aggiungi opzione vuota all'inizio
+    search_options = ["🔍 Cerca Asset..."] + [t for t in all_tickers if t.strip()]
+    
+    selected_asset_search = st.selectbox("Search", options=search_options, label_visibility="collapsed")
 
 # ---------------------------------------------------------
-# 4. RENDER SEZIONI (LOGICA)
+# 4. LOGICA DI VISUALIZZAZIONE ("Chi vince?")
 # ---------------------------------------------------------
 
-if selected_asset == "TUTTI":
-    # --- VISTA GENERALE ---
+# CASO A: L'utente ha selezionato un ASSET specifico nella ricerca
+if selected_asset_search != "🔍 Cerca Asset...":
     
-    # A. Carosello
-    render_carousel(df)
-
-    # B. Sezione Trump
-    render_trump_section(df)
-
-    # C. Lista Asset (quella nuova che abbiamo fatto)
-    # Mostra i video raggruppati per asset
-    render_all_assets_sections(df)
-
-else:
-    # --- VISTA FOCUS ASSET ---
+    target_asset = selected_asset_search
     
+    # Header Asset Mode
     st.markdown(f"""
-    <div style="margin-top: 20px; margin-bottom: 30px; padding: 20px; background: rgba(46, 204, 113, 0.05); border: 1px solid rgba(46, 204, 113, 0.2); border-radius: 16px; display:flex; align-items:center; gap:15px;">
-        <h1 style="margin:0; font-size: 40px; color:#F8FAFC;">{selected_asset}</h1>
-        <span style="background:#2ECC71; color:#0F172A; padding:4px 12px; border-radius:6px; font-weight:800; font-size:12px; letter-spacing:1px;">FOCUS MODE</span>
+    <div style="margin-top: 10px; margin-bottom: 25px; padding: 15px 20px; background: linear-gradient(90deg, rgba(46, 204, 113, 0.1) 0%, transparent 100%); border-left: 4px solid #2ECC71; border-radius: 8px; display:flex; align-items:center; justify-content:space-between;">
+        <div>
+            <h2 style="margin:0; font-size: 32px; color:#F8FAFC;">{target_asset}</h2>
+            <span style="color:#94A3B8; font-size:14px;">Timeline completa</span>
+        </div>
+        <div style="text-align:right;">
+            <span style="background:#0F172A; color:#2ECC71; padding:4px 12px; border-radius:6px; font-weight:700; border:1px solid #2ECC71;">FOCUS MODE</span>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # Filtra dati
-    asset_df = df[df['asset_ticker'] == selected_asset].copy()
+    # Filtra e Mostra Cards
+    asset_df = df[df['asset_ticker'] == target_asset].copy()
     
     if not asset_df.empty:
-        # Ordina
+        # Ordina per data (unificata)
         asset_df['sort_date'] = asset_df['published_at'].fillna(asset_df['created_at'])
-        asset_df['sort_date'] = pd.to_datetime(asset_df['sort_date'], utc=True)
         asset_df = asset_df.sort_values(by='sort_date', ascending=False)
         
-        # Genera Griglia
         cards_html = ""
         for _, row in asset_df.iterrows():
             ftype = row.get('feed_type', 'VIDEO')
@@ -110,11 +96,26 @@ else:
         
         st.markdown(f'<div class="worldy-grid">{cards_html}</div>', unsafe_allow_html=True)
     else:
-        st.info(f"Nessuna informazione recente trovata per {selected_asset}.")
+        st.info(f"Nessuna informazione trovata per {target_asset}.")
 
-# Pulsante Refresh Flottante (Opzionale, dato che non c'è più sidebar)
-# Mettilo in fondo alla pagina o in alto a destra se serve
-st.markdown("---")
-if st.button("🔄 Aggiorna Dati Database"):
-    st.cache_data.clear()
-    st.rerun()
+# CASO B: Nessuna ricerca, segui la Navigazione (Chips)
+else:
+    
+    if selected_view == "🦅 DASHBOARD":
+        # 1. Carosello (Briefing)
+        render_carousel(df)
+        
+        # 2. Separatore Elegante
+        st.markdown("---")
+        
+        # 3. Lista Completa Asset (La funzione nuova che abbiamo fatto)
+        render_all_assets_sections(df)
+
+    elif selected_view == "🇺🇸 TRUMP WATCH":
+        render_trump_section(df)
+
+    elif selected_view == "🧠 MARKET INSIGHTS":
+        render_market_section(df, assets_filter="TUTTI")
+
+# Footer tecnico
+st.markdown("<div style='height: 50px;'></div>", unsafe_allow_html=True)
