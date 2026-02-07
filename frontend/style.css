@@ -203,42 +203,78 @@ h1, h2, h3 {
     opacity: 1;
 }
 
-/* --- NUOVO CAROSELLO ORIZZONTALE (Specifico) --- */
+/* --- CAROSELLO ORIZZONTALE (FIXED DIMENSIONS) --- */
 .worldy-carousel {
-    display: flex;               /* Mette gli elementi in riga invece che in griglia */
-    overflow-x: auto;            /* Abilita lo scroll orizzontale */
-    gap: 20px;                   /* Spazio tra le card */
-    padding: 10px 5px 25px 5px;  /* Padding extra sotto per la scrollbar */
-    scroll-snap-type: x mandatory; /* Effetto calamita quando scorri */
+    display: flex;
+    overflow-x: auto;
+    gap: 24px;                   /* Spazio tra le card */
+    padding: 10px 5px 30px 5px;  /* Spazio sotto per scrollbar */
+    scroll-snap-type: x mandatory;
     
-    /* Stile Scrollbar (Firefox) */
+    /* Scrollbar personalizzata */
     scrollbar-width: thin;
     scrollbar-color: #2ECC71 #0F172A;
 }
 
-/* Regole specifiche per le card QUANDO sono dentro il carosello */
+/* Regole CARD nel Carosello */
 .worldy-carousel .w-card {
-    min-width: 320px;            /* Larghezza fissa obbligatoria per attivare lo scroll */
-    max-width: 320px;            /* Impedisce che diventino enormi */
-    flex: 0 0 auto;              /* Impedisce alla card di restringersi */
-    scroll-snap-align: start;    /* La card si allinea a sinistra allo stop */
+    /* DIMENSIONI FISSE */
+    min-width: 320px;
+    width: 320px;
+    height: 420px;               /* Altezza fissa per tutti */
+    
+    /* Layout Flex per gestire lo spazio interno */
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 auto;              /* Non restringere mai */
+    scroll-snap-align: start;
 }
 
-/* Stile Scrollbar (Chrome, Edge, Safari) */
-.worldy-carousel::-webkit-scrollbar {
-    height: 8px;                 /* Altezza barra orizzontale */
+/* CONTENUTO INTERNO (Gestione Spazi) */
+.worldy-carousel .w-content {
+    flex: 1;                     /* Occupa tutto lo spazio rimanente sotto la cover */
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between; /* Spinge il footer in fondo */
+    padding: 16px;
+    overflow: hidden;            /* Nasconde eccessi */
 }
 
-.worldy-carousel::-webkit-scrollbar-track {
-    background: rgba(15, 23, 42, 0.5);
-    border-radius: 10px;
+/* TITOLO (Troncamento automatico con ...) */
+.worldy-carousel .w-title {
+    font-size: 18px;
+    line-height: 1.4;
+    margin-bottom: 10px;
+    
+    /* Magia CSS per tagliare il testo alla 4a riga */
+    display: -webkit-box;
+    -webkit-line-clamp: 4;       /* Mostra max 4 righe */
+    line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: normal;         /* Permette a capo */
 }
 
-.worldy-carousel::-webkit-scrollbar-thumb {
-    background: #2ECC71;         /* Colore verde Worldy */
-    border-radius: 10px;
+/* TICKER (Posizionamento nel flusso) */
+.worldy-carousel .w-tickers {
+    position: relative;          /* Reset posizione assoluta se c'era */
+    bottom: auto; left: auto;    /* Reset coordinate */
+    margin-top: auto;            /* Spinge verso il basso se c'è spazio */
+    margin-bottom: 15px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
 }
 
-.worldy-carousel::-webkit-scrollbar-thumb:hover {
-    background: #27ae60;
+/* FOOTER (Sempre allineato in fondo) */
+.worldy-carousel .w-footer {
+    border-top: 1px solid rgba(148, 163, 184, 0.2);
+    padding-top: 12px;
+    margin-top: 0;               /* Rimuove margini extra */
 }
+
+/* Scrollbar Webkit (Chrome/Safari) */
+.worldy-carousel::-webkit-scrollbar { height: 8px; }
+.worldy-carousel::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); border-radius: 4px; }
+.worldy-carousel::-webkit-scrollbar-thumb { background: #2ECC71; border-radius: 4px; }
