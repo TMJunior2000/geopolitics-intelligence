@@ -266,3 +266,60 @@ def render_market_section(df, assets_filter="TUTTI"):
         cards_html += _generate_html_card(row, card_type="VIDEO")
     
     st.markdown(f'<div class="worldy-grid">{cards_html}</div>', unsafe_allow_html=True)
+    
+
+def render_all_assets_sections(df):
+    """
+    Renderizza una sezione separata per OGNI Asset presente nei dati VIDEO.
+    Es:
+    ---
+    TESLA (3 video)
+    [Card] [Card] [Card]
+    ---
+    BITCOIN (2 video)
+    [Card] [Card]
+    """
+    # Filtra solo i video (Market Insights)
+    video_df = df[df['feed_type'] == 'VIDEO'].copy()
+    
+    if video_df.empty:
+        st.info("Nessun dato di mercato disponibile.")
+        return
+
+    # Trova tutti i ticker unici e ordinali
+    # (Magari mettiamo prima quelli con più news?)
+    unique_tickers = video_df['asset_ticker'].dropna().unique().tolist()
+    # Pulizia ticker vuoti
+    unique_tickers = [t for t in unique_tickers if str(t).strip() != '']
+    unique_tickers.sort()
+
+    for ticker in unique_tickers:
+        # Filtra dati per questo asset
+        asset_data = video_df[video_df['asset_ticker'] == ticker]
+        
+        if asset_data.empty: continue
+        
+        # Recupera il nome esteso dell'asset (se c'è, altrimenti usa il ticker)
+        # Prende il primo nome non nullo trovato
+        asset_name = asset_data['asset_name'].dropna().iloc[0] if 'asset_name' in asset_data.columns and not asset_data['asset_name'].dropna().empty else ticker
+
+        # --- RENDER HEADER SEZIONE ASSET ---
+        # Un'intestazione stilosa per separare i blocchi
+        count = len(asset_data)
+        st.markdown(f"""
+            <div style="margin-top: 40px; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; display: flex; align-items: baseline;">
+                <h3 style="margin: 0; color: #F8FAFC; font-size: 24px; font-family: 'Space Grotesk', sans-serif;">
+                    {asset_name} <span style="color: #2ECC71;">{ticker}</span>
+                </h3>
+                <span style="margin-left: 10px; font-size: 12px; color: #64748B; background: rgba(15,23,42,0.5); padding: 2px 8px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05);">
+                    {count} Insights
+                </span>
+            </div>
+        """, unsafe_allow_html=True)
+
+        # --- RENDER GRIGLIA CARDS ---
+        cards_html = ""
+        for _, row in asset_data.iterrows():
+            cards_html += _generate_html_card(row, card_type="VIDEO")
+        
+        st.markdown(f'<div class="worldy-grid">{cards_html}</div>', unsafe_allow_html=True)

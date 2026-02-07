@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from database.repository import MarketRepository
 from frontend.ui.styles import load_css
-from frontend.ui.cards import render_trump_section, render_market_section, render_carousel
+from frontend.ui.cards import render_trump_section, render_carousel, render_all_assets_sections, _generate_html_card
 
 # 1. SETUP PAGINA
 st.set_page_config(page_title="Trading Intel", layout="wide", page_icon="🦅")
@@ -52,75 +52,60 @@ if df.empty:
 # 4. SIDEBAR FILTRI (AGGIORNATA)
 # ---------------------------------------------------------
 with st.sidebar:
-    st.header("🔍 Filtri")
+    st.markdown('<div style="text-align: center; margin-bottom: 20px;"><h2 style="margin:0;">🦅 RADAR</h2></div>', unsafe_allow_html=True)
     
-    # 1. Estrai TUTTI i ticker unici (Video + Trump)
-    # Puliamo i dati per evitare errori se asset_ticker è nullo
+    # Estrai ticker unici TOTALI per il filtro
     all_tickers_raw = df['asset_ticker'].dropna().astype(str).unique().tolist()
     all_tickers_clean = sorted([t for t in all_tickers_raw if t.strip() != ''])
-    
-    # Opzioni menu
     all_options = ["TUTTI"] + all_tickers_clean
     
-    selected_asset = st.selectbox("Asset Class", options=all_options)
+    selected_asset = st.selectbox("Seleziona Asset", options=all_options)
     
     st.markdown("---")
-    st.caption(f"Asset monitorati: {len(all_tickers_clean)}")
-    if st.button("🔄 Refresh Data"):
+    st.caption("Pannello di Controllo")
+    if st.button("🔄 Aggiorna Feed"):
         st.cache_data.clear()
         st.rerun()
 
-# ---------------------------------------------------------
-# 5. RENDER SEZIONI (LOGICA CONDIZIONALE)
-# ---------------------------------------------------------
+# 5. RENDER SEZIONI
 
-from frontend.ui.cards import _generate_html_card, render_carousel, render_trump_section, render_market_section
-
-# MODALITÀ DASHBOARD COMPLETA ("TUTTI")
 if selected_asset == "TUTTI":
-    
-    # A. CAROSELLO (Daily Briefing)
+    # A. CAROSELLO (Daily Briefing Unificato)
     render_carousel(df)
 
     # B. SEZIONE TRUMP (Feed Social)
     render_trump_section(df)
 
-    # C. SEZIONE VIDEO (Analisi Mercato)
-    render_market_section(df, assets_filter="TUTTI")
+    # C. SEZIONE ASSET (Divisa per Ticker)
+    # Invece di "render_market_section" generico, usiamo quello nuovo dettagliato
+    render_all_assets_sections(df)
 
-# MODALITÀ ASSET SPECIFICO (Timeline dedicata)
 else:
-    # 1. Intestazione Asset
+    # MODALITÀ FOCUS SU SINGOLO ASSET
     st.markdown(f"""
-    <div style="margin-bottom: 20px; display:flex; align-items:center; gap:10px;">
-        <h2 style="margin:0;">Focus: <span style="color:#3B82F6">{selected_asset}</span></h2>
-        <span style="background:rgba(59, 130, 246, 0.2); color:#3B82F6; padding:2px 8px; border-radius:4px; font-size:12px; border:1px solid #3B82F6;">TIMELINE</span>
+    <div style="margin-bottom: 30px; display:flex; align-items:center; gap:15px;">
+        <h1 style="margin:0; font-size: 50px;">{selected_asset}</h1>
+        <span style="background:rgba(46, 204, 113, 0.15); color:#2ECC71; padding:5px 15px; border-radius:8px; font-weight:bold; border:1px solid rgba(46, 204, 113, 0.3);">FOCUS MODE</span>
     </div>
     """, unsafe_allow_html=True)
 
-    # 2. Filtra il DataFrame per l'asset selezionato
+    # Filtra il DataFrame per l'asset selezionato
     asset_df = df[df['asset_ticker'] == selected_asset].copy()
     
     if not asset_df.empty:
-        # Crea la colonna data unificata per ordinamento
+        # Ordina dal più recente
+        # Creiamo colonna temporanea sicura per ordinare
         asset_df['sort_date'] = asset_df['published_at'].fillna(asset_df['created_at'])
         asset_df['sort_date'] = pd.to_datetime(asset_df['sort_date'], utc=True)
-        
-        # Ordina dal più recente
         asset_df = asset_df.sort_values(by='sort_date', ascending=False)
         
-        # 3. Genera la Griglia
         cards_html = ""
         for _, row in asset_df.iterrows():
             # Determina il tipo
             ftype = row.get('feed_type', 'VIDEO')
             c_type = "TRUMP" if ftype == 'SOCIAL_POST' else "VIDEO"
-            
-            # Genera la card (usa la tua funzione _generate_html_card esistente)
             cards_html += _generate_html_card(row, card_type=c_type)
         
-        # Renderizza
         st.markdown(f'<div class="worldy-grid">{cards_html}</div>', unsafe_allow_html=True)
-        
     else:
-        st.info(f"Nessuna informazione recente trovata per {selected_asset}.")
+        st.info(f"Nessuna informazione trovata per {selected_asset}.")
