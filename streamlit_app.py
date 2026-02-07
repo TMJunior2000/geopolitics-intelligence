@@ -124,4 +124,4 @@ else:
         render_trump_section(df)
 
     elif selected_view == "🧠 MARKET INSIGHTS":
-        render_market_section(df, assets_filter="TUTTI")
+        render_all_assets_sections(df)
