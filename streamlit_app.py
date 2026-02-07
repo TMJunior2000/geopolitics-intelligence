@@ -5,7 +5,7 @@ from frontend.ui.styles import load_css
 from frontend.ui.cards import render_trump_section, render_carousel, render_all_assets_sections, _generate_html_card, render_market_section
 
 # 1. SETUP & DATI
-st.set_page_config(page_title="Trading Intel", layout="wide", page_icon="🦅")
+st.set_page_config(page_title="Kairos", layout="wide", page_icon="🦅")
 load_css("style.css")
 
 @st.cache_data(ttl=300)
@@ -32,7 +32,7 @@ df = load_data()
 # Titolo
 st.markdown("""
 <div style="padding: 10px 0 0 0; margin-bottom: 20px;">
-    <h1 style="font-size: 38px; letter-spacing: -1px; margin: 0;">Worldy <span style="color:#2ECC71">Finance</span> AI</h1>
+    <h1 style="font-size: 38px; letter-spacing: -1px; margin: 0;">Market <span style="color:#2ECC71">Intelligence</span> AI</h1>
 </div>
 """, unsafe_allow_html=True)
 
