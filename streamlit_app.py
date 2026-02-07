@@ -125,3 +125,5 @@ else:
 
     elif selected_view == "🧠 MARKET INSIGHTS":
         render_all_assets_sections(df)
+    
+st.markdown("<div style='height: 50px;'></div>", unsafe_allow_html=True)

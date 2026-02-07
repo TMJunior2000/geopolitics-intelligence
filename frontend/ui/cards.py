@@ -271,13 +271,7 @@ def render_market_section(df, assets_filter="TUTTI"):
 def render_all_assets_sections(df):
     """
     Renderizza una sezione separata per OGNI Asset presente nei dati VIDEO.
-    Es:
-    ---
-    TESLA (3 video)
-    [Card] [Card] [Card]
-    ---
-    BITCOIN (2 video)
-    [Card] [Card]
+    Ogni sezione è un CAROSELLO orizzontale per risparmiare spazio verticale.
     """
     # Filtra solo i video (Market Insights)
     video_df = df[df['feed_type'] == 'VIDEO'].copy()
@@ -286,12 +280,10 @@ def render_all_assets_sections(df):
         st.info("Nessun dato di mercato disponibile.")
         return
 
-    # Trova tutti i ticker unici e ordinali
-    # (Magari mettiamo prima quelli con più news?)
+    # Trova tutti i ticker unici
     unique_tickers = video_df['asset_ticker'].dropna().unique().tolist()
-    # Pulizia ticker vuoti
-    unique_tickers = [t for t in unique_tickers if str(t).strip() != '']
-    unique_tickers.sort()
+    # Pulizia e ordinamento
+    unique_tickers = sorted([t for t in unique_tickers if str(t).strip() != ''])
 
     for ticker in unique_tickers:
         # Filtra dati per questo asset
@@ -299,27 +291,30 @@ def render_all_assets_sections(df):
         
         if asset_data.empty: continue
         
-        # Recupera il nome esteso dell'asset (se c'è, altrimenti usa il ticker)
-        # Prende il primo nome non nullo trovato
+        # Ordina per data (più recente prima)
+        # (Assumiamo che published_at sia già datetime o la convertiamo al volo se serve)
+        # asset_data = asset_data.sort_values(by='published_at', ascending=False)
+        
+        # Recupera il nome esteso dell'asset
         asset_name = asset_data['asset_name'].dropna().iloc[0] if 'asset_name' in asset_data.columns and not asset_data['asset_name'].dropna().empty else ticker
 
         # --- RENDER HEADER SEZIONE ASSET ---
-        # Un'intestazione stilosa per separare i blocchi
         count = len(asset_data)
         st.markdown(f"""
-            <div style="margin-top: 40px; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; display: flex; align-items: baseline;">
-                <h3 style="margin: 0; color: #F8FAFC; font-size: 24px; font-family: 'Space Grotesk', sans-serif;">
-                    {asset_name} <span style="color: #2ECC71;">{ticker}</span>
+            <div style="margin-top: 30px; margin-bottom: 10px; padding-left: 5px; display: flex; align-items: center;">
+                <h3 style="margin: 0; color: #F8FAFC; font-size: 22px; font-family: 'Space Grotesk', sans-serif;">
+                    {asset_name} <span style="color: #2ECC71; font-size: 18px;">{ticker}</span>
                 </h3>
-                <span style="margin-left: 10px; font-size: 12px; color: #64748B; background: rgba(15,23,42,0.5); padding: 2px 8px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05);">
-                    {count} Insights
+                <span style="margin-left: 12px; font-size: 10px; font-weight: 700; color: #64748B; background: rgba(15,23,42,0.8); padding: 2px 8px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1);">
+                    {count}
                 </span>
             </div>
         """, unsafe_allow_html=True)
 
-        # --- RENDER GRIGLIA CARDS ---
+        # --- RENDER CAROSELLO CARDS (MODIFICA QUI) ---
         cards_html = ""
         for _, row in asset_data.iterrows():
             cards_html += _generate_html_card(row, card_type="VIDEO")
         
-        st.markdown(f'<div class="worldy-grid">{cards_html}</div>', unsafe_allow_html=True)
+        # Usiamo 'worldy-carousel' invece di 'worldy-grid'
+        st.markdown(f'<div class="worldy-carousel">{cards_html}</div>', unsafe_allow_html=True)
