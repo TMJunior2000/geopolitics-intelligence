@@ -28,7 +28,7 @@ h1, h2, h3 {
 ::-webkit-scrollbar-thumb:hover { background: #2ECC71; }
 
 /* =============================================================================
-   2. NAVIGATION BAR (CHIPS STYLE - NO PALLINI)
+   2. NAVIGATION BAR (STILE W-BADGE)
    ============================================================================= */
 
 /* Contenitore Radio Button */
@@ -47,67 +47,84 @@ div[role="radiogroup"] label > div:first-child {
     display: none !important;
 }
 
-/* Stile Bottone (Label) */
+/* Stile Bottone (UGUALE A W-BADGE) */
 div[role="radiogroup"] label {
-    background: rgba(30, 41, 59, 0.4) !important;
+    background: rgba(15, 23, 42, 0.6) !important; /* Base scura */
     border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    border-radius: 12px !important;
-    padding: 8px 20px !important;
+    border-radius: 8px !important; /* Un po' più squadrato come i badge */
+    padding: 6px 16px !important;
     min-width: fit-content;
     margin: 0 !important;
-    transition: all 0.2s ease;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     cursor: pointer;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+    backdrop-filter: blur(8px);
 }
 
 /* Testo Bottone */
 div[role="radiogroup"] label p {
     font-family: 'Space Grotesk', sans-serif !important;
-    font-weight: 600 !important;
-    font-size: 13px !important;
-    color: #94A3B8 !important;
+    font-weight: 800 !important; /* Grassetto spinto come w-badge */
+    font-size: 11px !important;
+    color: #CBD5E1 !important; /* Grigio chiaro */
+    text-transform: uppercase !important;
+    letter-spacing: 1px !important;
 }
 
 /* Hover */
 div[role="radiogroup"] label:hover {
     border-color: #2ECC71 !important;
-    background: rgba(46, 204, 113, 0.1) !important;
+    background: rgba(30, 41, 59, 0.9) !important;
     transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.3);
+}
+
+div[role="radiogroup"] label:hover p {
+    color: #FFFFFF !important;
 }
 
 /* Selezionato (Active) */
 div[role="radiogroup"] label[data-checked="true"] {
     background: linear-gradient(135deg, #0F766E 0%, #22C55E 100%) !important;
     border: 1px solid #2ECC71 !important;
-    box-shadow: 0 0 20px rgba(46, 204, 113, 0.25) !important;
+    box-shadow: 0 0 15px rgba(46, 204, 113, 0.3) !important;
 }
 
 div[role="radiogroup"] label[data-checked="true"] p {
     color: #FFFFFF !important;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
 }
 
 /* =============================================================================
-   3. SEARCH BAR (SELECTBOX STYLING)
+   3. SEARCH BAR (SELECTBOX PULITA)
    ============================================================================= */
 
-/* Nascondi Label */
+/* Nascondi Label Streamlit */
 div[data-testid="stSelectbox"] label { display: none; }
 
 /* Barra di Input */
 div[data-testid="stSelectbox"] > div > div {
-    background-color: rgba(15, 23, 42, 0.6) !important;
+    background-color: rgba(15, 23, 42, 0.5) !important;
     border: 1px solid rgba(255, 255, 255, 0.15) !important;
-    border-radius: 12px !important;
+    border-radius: 8px !important; /* Match w-badge radius */
     color: white !important;
-    min-height: 42px;
+    min-height: 40px;
     backdrop-filter: blur(10px);
+}
+
+/* Testo Placeholder / Selezionato */
+div[data-testid="stSelectbox"] div[data-baseweb="select"] span {
+    font-family: 'Space Grotesk', sans-serif !important;
+    font-weight: 600;
+    font-size: 13px;
+    color: #94A3B8 !important;
 }
 
 /* Focus */
 div[data-testid="stSelectbox"] > div > div:focus-within {
     border-color: #2ECC71 !important;
-    box-shadow: 0 0 15px rgba(46, 204, 113, 0.15);
+    box-shadow: 0 0 10px rgba(46, 204, 113, 0.2);
+    background-color: rgba(15, 23, 42, 0.9) !important;
 }
 
 /* Icona Freccia */
@@ -117,7 +134,7 @@ div[data-testid="stSelectbox"] svg { fill: #64748B !important; }
 div[data-baseweb="popover"] {
     background-color: #0F172A !important;
     border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 12px;
+    border-radius: 8px;
     padding: 5px;
 }
 
@@ -125,7 +142,8 @@ div[data-baseweb="popover"] {
 div[data-baseweb="menu"] li {
     color: #CBD5E1 !important;
     font-family: 'Inter', sans-serif;
-    border-radius: 6px;
+    font-size: 13px;
+    border-radius: 4px;
     margin-bottom: 2px;
 }
 
@@ -134,7 +152,7 @@ div[data-baseweb="menu"] li[aria-selected="true"],
 div[data-baseweb="menu"] li:hover {
     background-color: rgba(46, 204, 113, 0.15) !important;
     color: #2ECC71 !important;
-    font-weight: 600;
+    font-weight: 700;
 }
 
 /* =============================================================================

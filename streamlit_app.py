@@ -31,7 +31,7 @@ df = load_data()
 
 # Titolo
 st.markdown("""
-<div style="padding: 10px 0 0 0; margin-bottom: 10px;">
+<div style="padding: 10px 0 0 0; margin-bottom: 20px;">
     <h1 style="font-size: 38px; letter-spacing: -1px; margin: 0;">Worldy <span style="color:#2ECC71">Finance</span> AI</h1>
 </div>
 """, unsafe_allow_html=True)
@@ -41,30 +41,44 @@ if df.empty:
     st.stop()
 
 # --- LAYOUT NAVIGAZIONE (2 Colonne) ---
-col_nav, col_search = st.columns([2, 1]) # 2/3 Navigazione, 1/3 Ricerca
+col_nav, col_search = st.columns([2.2, 1]) # Un po' più spazio ai bottoni
 
-# A. Colonna Sinistra: CHIPS (Macro Categorie)
+# A. Colonna Sinistra: CHIPS (Stile W-Badge)
 with col_nav:
     # Menu orizzontale
     nav_options = ["🦅 DASHBOARD", "🇺🇸 TRUMP WATCH", "🧠 MARKET INSIGHTS"]
     selected_view = st.radio("Nav", options=nav_options, horizontal=True, label_visibility="collapsed")
 
-# B. Colonna Destra: RICERCA ASSET (Dropdown)
+# B. Colonna Destra: RICERCA ASSET (Dropdown Intelligente)
 with col_search:
-    # Estrai ticker unici
+    # Estrai ticker unici e pulisci
     all_tickers = sorted(df['asset_ticker'].dropna().astype(str).unique().tolist())
-    # Aggiungi opzione vuota all'inizio
-    search_options = ["🔍 Cerca Asset..."] + [t for t in all_tickers if t.strip()]
+    clean_tickers = [t for t in all_tickers if t.strip()]
     
-    selected_asset_search = st.selectbox("Search", options=search_options, label_visibility="collapsed")
+    # Lista opzioni con "TUTTI" in cima
+    search_options = ["TUTTI"] + clean_tickers
+    
+    # Selectbox con Placeholder "Cerca Asset..."
+    # index=None fa sì che all'inizio non ci sia nulla selezionato (mostra placeholder)
+    # Quando clicchi, il placeholder sparisce e puoi scrivere
+    selected_asset_search = st.selectbox(
+        "Search", 
+        options=search_options, 
+        index=None, 
+        placeholder="🔍 Cerca Asset...", 
+        label_visibility="collapsed"
+    )
 
 # ---------------------------------------------------------
 # 4. LOGICA DI VISUALIZZAZIONE ("Chi vince?")
 # ---------------------------------------------------------
 
-# CASO A: L'utente ha selezionato un ASSET specifico nella ricerca
-if selected_asset_search != "🔍 Cerca Asset...":
+# Logica: Se l'utente seleziona qualcosa nella ricerca (e non è None), usiamo quello.
+# Se seleziona "TUTTI" o lascia vuoto (None), usiamo la navigazione a bottoni.
+
+if selected_asset_search and selected_asset_search != "TUTTI":
     
+    # --- MODALITÀ ASSET ---
     target_asset = selected_asset_search
     
     # Header Asset Mode
@@ -75,7 +89,7 @@ if selected_asset_search != "🔍 Cerca Asset...":
             <span style="color:#94A3B8; font-size:14px;">Timeline completa</span>
         </div>
         <div style="text-align:right;">
-            <span style="background:#0F172A; color:#2ECC71; padding:4px 12px; border-radius:6px; font-weight:700; border:1px solid #2ECC71;">FOCUS MODE</span>
+            <span style="background:#0F172A; color:#2ECC71; padding:4px 12px; border-radius:6px; font-weight:700; border:1px solid #2ECC71; font-size:10px; letter-spacing:1px;">FOCUS MODE</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -84,8 +98,8 @@ if selected_asset_search != "🔍 Cerca Asset...":
     asset_df = df[df['asset_ticker'] == target_asset].copy()
     
     if not asset_df.empty:
-        # Ordina per data (unificata)
         asset_df['sort_date'] = asset_df['published_at'].fillna(asset_df['created_at'])
+        asset_df['sort_date'] = pd.to_datetime(asset_df['sort_date'], utc=True)
         asset_df = asset_df.sort_values(by='sort_date', ascending=False)
         
         cards_html = ""
@@ -98,17 +112,12 @@ if selected_asset_search != "🔍 Cerca Asset...":
     else:
         st.info(f"Nessuna informazione trovata per {target_asset}.")
 
-# CASO B: Nessuna ricerca, segui la Navigazione (Chips)
 else:
+    # --- MODALITÀ NAVIGAZIONE (DASHBOARD / TRUMP / MARKET) ---
     
     if selected_view == "🦅 DASHBOARD":
-        # 1. Carosello (Briefing)
         render_carousel(df)
-        
-        # 2. Separatore Elegante
         st.markdown("---")
-        
-        # 3. Lista Completa Asset (La funzione nuova che abbiamo fatto)
         render_all_assets_sections(df)
 
     elif selected_view == "🇺🇸 TRUMP WATCH":
@@ -116,6 +125,3 @@ else:
 
     elif selected_view == "🧠 MARKET INSIGHTS":
         render_market_section(df, assets_filter="TUTTI")
-
-# Footer tecnico
-st.markdown("<div style='height: 50px;'></div>", unsafe_allow_html=True)
