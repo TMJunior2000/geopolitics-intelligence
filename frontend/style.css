@@ -31,7 +31,7 @@ section[data-testid="stSidebar"] h3 {
     letter-spacing: 1px;
 }
 
-/* Selectbox e Input */
+/* Selectbox e Input Custom */
 div[data-testid="stSelectbox"] > div > div {
     background-color: rgba(30, 41, 59, 0.6);
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -100,7 +100,7 @@ section[data-testid="stSidebar"] hr {
     padding: 10px 0;
 }
 
-/* Stile Scrollbar Orizzontale */
+/* Stile Scrollbar Generale per i container */
 .worldy-carousel::-webkit-scrollbar { height: 6px; }
 .worldy-carousel::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); border-radius: 3px; }
 .worldy-carousel::-webkit-scrollbar-thumb { background: #2ECC71; border-radius: 3px; }
@@ -176,7 +176,7 @@ section[data-testid="stSidebar"] hr {
     font-family: 'Space Grotesk', monospace; letter-spacing: 0.5px;
 }
 
-/* Body Scrollabile (per testi lunghi) */
+/* Body Scrollabile (Il testo non viene mai tagliato) */
 .w-body {
     flex-grow: 1;
     overflow-y: auto;
@@ -207,7 +207,7 @@ section[data-testid="stSidebar"] hr {
 }
 .level-box { text-align: center; }
 .level-label { font-size: 8px; color: #64748B; text-transform: uppercase; font-weight: 700; }
-.level-val { font-size: 11px; font-weight: 700; color: #F8FAFC; }
+.level-val { font-size: 11px; font-weight: 700; color: #F8FAFC; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
 
 /* Key Drivers List */
 .drivers-container {
