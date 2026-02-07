@@ -32,66 +32,76 @@ h1, h2, h3 {
 ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
 
 /* =============================================================================
-   2. NAVIGATION BAR (CHIPS STYLING - FIX DEFINITIVO)
+   2. NAVIGATION BAR (STILE IDENTICO A W-BADGE)
    ============================================================================= */
 
-/* Contenitore dei Radio Button (Flex Row) */
+/* Contenitore Flex Row (Per allineare i bottoni) */
 [data-testid="stRadio"] > div {
     display: flex !important;
     flex-direction: row !important;
-    flex-wrap: nowrap !important; /* Forza riga unica */
-    overflow-x: auto !important;   /* Scroll orizzontale se serve */
-    gap: 12px !important;
-    padding: 5px 0 15px 0 !important; /* Spazio sotto per non tagliare ombre */
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    gap: 8px !important; /* Gap ridotto come tra i badge */
+    padding-bottom: 5px !important;
+    align-items: center;
     background: transparent !important;
 }
 
-/* NASCONDI IL PALLINO (Radio Circle) - Selettore Aggressivo */
+/* NASCONDI IL PALLINO */
 [data-testid="stRadio"] label > div:first-child {
     display: none !important;
 }
 
-/* STILE BOTTONE (Label) */
+/* STILE BOTTONE (Copia esatta di .w-badge) */
 [data-testid="stRadio"] label {
-    background: rgba(30, 41, 59, 0.6) !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    border-radius: 10px !important;
-    padding: 10px 24px !important; /* Più grande e cliccabile */
+    /* Proprietà visive w-badge */
+    background: rgba(0, 0, 0, 0.3) !important;
+    backdrop-filter: blur(4px) !important;
+    -webkit-backdrop-filter: blur(4px) !important;
+    border-radius: 6px !important;
+    padding: 4px 10px !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+    
+    /* Aggiunta necessaria per i bottoni: un bordo sottile per vederli sul nero */
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    
+    /* Layout funzionale */
     margin: 0 !important;
     min-width: max-content !important;
     cursor: pointer !important;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
 }
 
-/* TESTO BOTTONE */
+/* TESTO BOTTONE (Copia esatta font w-badge) */
 [data-testid="stRadio"] label p {
     font-family: 'Space Grotesk', sans-serif !important;
-    font-weight: 700 !important;
-    font-size: 14px !important; /* Testo più grande */
-    color: #94A3B8 !important;
-    margin: 0 !important;
+    font-size: 10px !important;       /* Piccolo come il badge */
+    font-weight: 800 !important;      /* Extra Bold */
+    text-transform: uppercase !important;
     letter-spacing: 0.5px !important;
+    color: white !important;
+    margin: 0 !important;
+    line-height: 1.2 !important;
 }
 
-/* HOVER (Passaggio Mouse) */
+/* HOVER (Leggero bagliore) */
 [data-testid="stRadio"] label:hover {
-    border-color: #2ECC71 !important;
-    background: rgba(46, 204, 113, 0.1) !important;
-    transform: translateY(-2px);
-    z-index: 10 !important; /* Porta in primo piano su hover */
+    border-color: rgba(255, 255, 255, 0.5) !important;
+    background: rgba(255, 255, 255, 0.1) !important;
+    transform: translateY(-1px);
 }
 
-/* SELEZIONATO (Active State) */
+/* SELEZIONATO (Stile attivo differenziato) */
+/* Quando attivo diventa verde/blu come i badge specifici */
 [data-testid="stRadio"] label[data-checked="true"] {
-    background: linear-gradient(135deg, #065f46 0%, #10b981 100%) !important; /* Verde Smeraldo */
-    border: 1px solid #34d399 !important;
-    box-shadow: 0 0 15px rgba(52, 211, 153, 0.4) !important;
+    background: linear-gradient(135deg, #0F766E 0%, #22C55E 100%) !important;
+    border: 1px solid #2ECC71 !important;
+    box-shadow: 0 2px 8px rgba(46, 204, 113, 0.4) !important;
 }
 
 [data-testid="stRadio"] label[data-checked="true"] p {
     color: #FFFFFF !important;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.3) !important;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5) !important;
 }
 
 /* =============================================================================
