@@ -12,7 +12,7 @@ h1, h2, h3 {
     color: #FFFFFF;
 }
 
-/* --- WORLDY-STYLE CARD SYSTEM --- */
+/* --- WORLDY-STYLE CARD SYSTEM (GRID MODE) --- */
 .worldy-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -20,7 +20,23 @@ h1, h2, h3 {
     padding: 10px 0;
 }
 
-/* La Card Principale */
+/* --- CAROSELLO ORIZZONTALE (SCROLL MODE) --- */
+.worldy-carousel {
+    display: flex;
+    overflow-x: auto;
+    gap: 24px;
+    padding: 10px 5px 30px 5px;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: thin;
+    scrollbar-color: #2ECC71 #0F172A;
+}
+
+/* --- STILE SCROLLBAR (Chrome/Safari) --- */
+.worldy-carousel::-webkit-scrollbar { height: 8px; }
+.worldy-carousel::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); border-radius: 4px; }
+.worldy-carousel::-webkit-scrollbar-thumb { background: #2ECC71; border-radius: 4px; }
+
+/* --- CARD BASE --- */
 .w-card {
     position: relative;
     border-radius: 20px;
@@ -32,9 +48,22 @@ h1, h2, h3 {
     cursor: pointer;
     display: flex;
     flex-direction: column;
-    height: 100%;
-    min-height: 300px;
     box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+}
+
+/* Dimensioni Card nel Carosello */
+.worldy-carousel .w-card {
+    min-width: 320px;
+    width: 320px;
+    height: 440px; /* Altezza fissa aumentata per contenere tutto */
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+}
+
+/* Dimensioni Card nella Griglia (Archivio) */
+.worldy-grid .w-card {
+    height: 100%;
+    min-height: 400px;
 }
 
 .w-card:hover {
@@ -43,9 +72,22 @@ h1, h2, h3 {
     border-color: rgba(255,255,255,0.18);
 }
 
-/* La Parte Superiore (Immagine/Gradiente) */
+.w-card:hover::before { opacity: 1; }
+
+.w-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(120deg, rgba(255,255,255,0.06), transparent 40%);
+    opacity: 0;
+    transition: opacity 0.25s;
+    pointer-events: none;
+}
+
+/* --- COVER & BADGES --- */
 .w-cover {
-    height: 170px;
+    height: 140px;
     width: 100%;
     background-size: cover;
     background-position: center;
@@ -53,49 +95,25 @@ h1, h2, h3 {
     filter: saturate(0.9) contrast(1.05);
 }
 
-/* Overlay sfumato per leggere il testo sopra */
 .w-overlay {
     position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(
-        to top,
-        rgba(2,6,23,0.95) 5%,
-        rgba(2,6,23,0.6) 40%,
-        transparent 100%
-    );
+    bottom: 0; left: 0; width: 100%; height: 100%;
+    background: linear-gradient(to top, rgba(2,6,23,0.95) 5%, rgba(2,6,23,0.6) 40%, transparent 100%);
 }
 
-/* Badge Categoria in alto a sinistra */
 .w-badge {
-    position: absolute;
-    top: 12px;
-    left: 12px;
-    padding: 4px 10px;
-    border-radius: 20px;
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: white;
-    z-index: 2;
-    backdrop-filter: blur(4px);
+    position: absolute; top: 12px; left: 12px;
+    padding: 4px 10px; border-radius: 20px;
+    font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    color: white; z-index: 2; backdrop-filter: blur(4px);
 }
-
-/* --- STILI SPECIFICI PER SEZIONI --- */
-/* Trump Style (Rosso/Blu USA) */
 .badge-trump { background-color: #E74C3C; box-shadow: 0 2px 10px rgba(231, 76, 60, 0.4); }
-.cover-trump { background: linear-gradient(135deg, #002D72 0%, #C8102E 100%); }
-
-/* Finance/Video Style (Verde/Blu) */
 .badge-video { background-color: #2ECC71; box-shadow: 0 2px 10px rgba(46, 204, 113, 0.4); }
-.cover-video { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
 
 /* --- CONTENUTO CARD --- */
 .w-content {
-    padding: 18px 18px 48px 18px;
+    padding: 16px;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
@@ -103,64 +121,41 @@ h1, h2, h3 {
 }
 
 .w-meta {
-    font-size: 11px;
+    font-size: 10px;
     color: #94A3B8;
-    margin-bottom: 8px;
     text-transform: uppercase;
     letter-spacing: 1px;
 }
 
 .w-title {
     font-family: 'Space Grotesk', sans-serif;
-    font-size: 19px;
+    font-size: 16px;
     font-weight: 600;
     line-height: 1.35;
     color: #F8FAFC;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
+    
+    /* Troncamento testo a 3 righe */
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
+/* --- FOOTER & TICKERS --- */
 .w-footer {
     margin-top: auto;
+    border-top: 1px solid rgba(148, 163, 184, 0.2);
+    padding-top: 10px;
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    border-top: 1px solid #2D3748;
-    padding-top: 10px;
+    align-items: flex-end;
 }
 
-.w-score {
-    font-weight: bold;
-    font-size: 14px;
-}
-
-/* --- HEADER SECTION --- */
-.section-header {
-    border-left: 4px solid;
-    padding-left: 15px;
-    margin: 30px 0 20px 0;
-}
-.header-trump { border-color: #E74C3C; }
-.header-market { border-color: #2ECC71; }
-
-/* Mobile Adjustments */
-@media (max-width: 600px) {
-    .worldy-grid {
-        grid-template-columns: 1fr; /* Una colonna su mobile */
-    }
-    .w-card {
-        min-height: auto; /* Altezza flessibile su mobile */
-    }
-}
-
-/* --- TICKER BADGES (GROUPED) --- */
 .w-tickers {
-    position: absolute;   /* nuovo */
-    bottom: 14px;         /* fisso */
-    left: 14px;           /* fisso */
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    z-index: 3;
+    display: flex; flex-wrap: wrap; gap: 4px;
+    max-width: 70%;
 }
 
 .ticker-badge {
@@ -168,221 +163,30 @@ h1, h2, h3 {
     backdrop-filter: blur(6px);
     color: #E2E8F0;
     font-family: 'Space Grotesk', sans-serif;
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 600;
-    letter-spacing: 0.6px;
-    padding: 4px 10px;
+    letter-spacing: 0.5px;
+    padding: 3px 8px;
     border-radius: 999px;
     border: 1px solid rgba(255,255,255,0.15);
-    transition: all 0.2s ease;
 }
 
-.ticker-badge:hover {
-    background: rgba(255,255,255,0.15);
-    border-color: rgba(255,255,255,0.35);
-    color: #FFFFFF;
-}
+/* --- NUOVI COMPONENTI INTERNI (Smart Card) --- */
 
-/* --- MODERN DEPTH LAYER --- */
-.w-card::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background: linear-gradient(
-        120deg,
-        rgba(255,255,255,0.06),
-        transparent 40%
-    );
-    opacity: 0;
-    transition: opacity 0.25s;
-    pointer-events: none;
-}
-
-.w-card:hover::before {
-    opacity: 1;
-}
-
-/* --- CAROSELLO ORIZZONTALE (FIXED DIMENSIONS) --- */
-.worldy-carousel {
-    display: flex;
-    overflow-x: auto;
-    gap: 24px;                   /* Spazio tra le card */
-    padding: 10px 5px 30px 5px;  /* Spazio sotto per scrollbar */
-    scroll-snap-type: x mandatory;
-    
-    /* Scrollbar personalizzata */
-    scrollbar-width: thin;
-    scrollbar-color: #2ECC71 #0F172A;
-}
-
-/* Regole CARD nel Carosello */
-.worldy-carousel .w-card {
-    /* DIMENSIONI FISSE */
-    min-width: 320px;
-    width: 320px;
-    height: 420px;               /* Altezza fissa per tutti */
-    
-    /* Layout Flex per gestire lo spazio interno */
-    display: flex;
-    flex-direction: column;
-    flex: 0 0 auto;              /* Non restringere mai */
-    scroll-snap-align: start;
-}
-
-/* CONTENUTO INTERNO (Gestione Spazi) */
-.worldy-carousel .w-content {
-    flex: 1;                     /* Occupa tutto lo spazio rimanente sotto la cover */
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between; /* Spinge il footer in fondo */
-    padding: 16px;
-    overflow: hidden;            /* Nasconde eccessi */
-}
-
-/* TITOLO (Troncamento automatico con ...) */
-.worldy-carousel .w-title {
-    font-size: 18px;
-    line-height: 1.4;
-    margin-bottom: 10px;
-    
-    /* Magia CSS per tagliare il testo alla 4a riga */
-    display: -webkit-box;
-    -webkit-line-clamp: 4;       /* Mostra max 4 righe */
-    line-clamp: 4;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: normal;         /* Permette a capo */
-}
-
-/* TICKER (Posizionamento nel flusso) */
-.worldy-carousel .w-tickers {
-    position: relative;          /* Reset posizione assoluta se c'era */
-    bottom: auto; left: auto;    /* Reset coordinate */
-    margin-top: auto;            /* Spinge verso il basso se c'è spazio */
-    margin-bottom: 15px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-}
-
-/* FOOTER (Sempre allineato in fondo) */
-.worldy-carousel .w-footer {
-    border-top: 1px solid rgba(148, 163, 184, 0.2);
-    padding-top: 12px;
-    margin-top: 0;               /* Rimuove margini extra */
-}
-
-/* Scrollbar Webkit (Chrome/Safari) */
-.worldy-carousel::-webkit-scrollbar { height: 8px; }
-.worldy-carousel::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); border-radius: 4px; }
-.worldy-carousel::-webkit-scrollbar-thumb { background: #2ECC71; border-radius: 4px; }
-
-/* --- NUOVI STILI PER DETTAGLI CARD --- */
-
-/* Badge Raccomandazione (LONG/SHORT/WATCH) */
+/* Recommendation Badges */
 .rec-badge {
-    font-size: 10px;
-    font-weight: 800;
-    padding: 3px 8px;
-    border-radius: 4px;
-    text-transform: uppercase;
-    display: inline-block;
-    margin-right: 6px;
-}
-.rec-LONG { background: rgba(46, 204, 113, 0.2); color: #2ECC71; border: 1px solid #2ECC71; }
-.rec-SHORT { background: rgba(231, 76, 60, 0.2); color: #E74C3C; border: 1px solid #E74C3C; }
-.rec-WATCH { background: rgba(241, 196, 15, 0.2); color: #F1C40F; border: 1px solid #F1C40F; }
-.rec-HOLD { background: rgba(52, 152, 219, 0.2); color: #3498DB; border: 1px solid #3498DB; }
-
-/* Griglia Livelli Operativi (Entry/Target/Stop) */
-.levels-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr); /* 3 colonne uguali */
-    gap: 5px;
-    margin-top: 10px;
-    margin-bottom: 10px;
-    background: rgba(0,0,0,0.2);
-    border-radius: 8px;
-    padding: 8px;
-}
-
-.level-box {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-}
-
-.level-label {
-    font-size: 8px;
-    text-transform: uppercase;
-    color: #64748B;
-    letter-spacing: 0.5px;
-    margin-bottom: 2px;
-}
-
-.level-value {
-    font-size: 11px;
-    font-weight: 600;
-    color: #E2E8F0;
-    line-height: 1.1;
-}
-
-/* Key Drivers (Lista Punti) */
-.drivers-box {
-    margin-top: 8px;
-    font-size: 11px;
-    color: #CBD5E1;
-    background: rgba(255,255,255,0.03);
-    padding: 8px;
-    border-radius: 6px;
-}
-
-.driver-item {
-    display: flex;
-    align-items: flex-start;
-    margin-bottom: 4px;
-}
-.driver-item:last-child { margin-bottom: 0; }
-.driver-dot { color: #2ECC71; margin-right: 6px; font-weight: bold; }
-
-/* Impact Score (Trump) */
-.impact-bar {
-    height: 4px;
-    background: #334155;
-    border-radius: 2px;
-    margin-top: 5px;
-    overflow: hidden;
-}
-.impact-fill { height: 100%; }
-
-/* --- COMPONENTI INTERNI CARD --- */
-
-/* Badge Raccomandazione (LONG, SHORT, WATCH) */
-.rec-badge {
-    font-size: 9px;
-    font-weight: 700;
-    padding: 2px 6px;
-    border-radius: 4px;
-    text-transform: uppercase;
-    display: inline-block;
-    margin-right: 6px;
-    letter-spacing: 0.5px;
+    font-size: 9px; font-weight: 700;
+    padding: 2px 6px; border-radius: 4px;
+    text-transform: uppercase; display: inline-block;
+    margin-right: 6px; letter-spacing: 0.5px;
 }
 .rec-LONG { background: rgba(46, 204, 113, 0.15); color: #2ECC71; border: 1px solid rgba(46, 204, 113, 0.3); }
 .rec-SHORT { background: rgba(231, 76, 60, 0.15); color: #E74C3C; border: 1px solid rgba(231, 76, 60, 0.3); }
 .rec-WATCH { background: rgba(241, 196, 15, 0.15); color: #F1C40F; border: 1px solid rgba(241, 196, 15, 0.3); }
 .rec-HOLD { background: rgba(52, 152, 219, 0.15); color: #3498DB; border: 1px solid rgba(52, 152, 219, 0.3); }
 
-/* Orizzonte Temporale */
-.horizon-tag {
-    font-size: 9px;
-    color: #94A3B8;
-    text-transform: uppercase;
-    font-weight: 600;
-}
+/* Horizon Tag */
+.horizon-tag { font-size: 9px; color: #94A3B8; text-transform: uppercase; font-weight: 600; }
 
 /* Griglia Livelli (Tecnica) */
 .levels-container {
@@ -399,19 +203,14 @@ h1, h2, h3 {
 .level-label { font-size: 7px; color: #64748B; text-transform: uppercase; margin-bottom: 2px; }
 .level-val { font-size: 10px; font-weight: 600; color: #F8FAFC; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* Key Drivers (Fondamentale) */
+/* Key Drivers List (Fondamentale) */
 .drivers-container {
     margin-top: 8px;
     padding: 6px 8px;
     background: rgba(255,255,255,0.03);
     border-radius: 6px;
 }
-.driver-row {
-    display: flex;
-    align-items: flex-start;
-    margin-bottom: 3px;
-    line-height: 1.2;
-}
+.driver-row { display: flex; align-items: flex-start; margin-bottom: 3px; line-height: 1.2; }
 .driver-row:last-child { margin-bottom: 0; }
 .driver-dot { color: #2ECC71; font-size: 12px; line-height: 10px; margin-right: 5px; }
 .driver-text { font-size: 10px; color: #CBD5E1; }
@@ -421,3 +220,12 @@ h1, h2, h3 {
 .impact-header { display: flex; justify-content: space-between; font-size: 9px; color: #94A3B8; margin-bottom: 3px; }
 .impact-track { width: 100%; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden; }
 .impact-bar { height: 100%; transition: width 0.3s; }
+
+/* --- SECTION HEADERS --- */
+.section-header {
+    border-left: 4px solid;
+    padding-left: 15px;
+    margin: 30px 0 20px 0;
+}
+.header-trump { border-color: #E74C3C; }
+.header-market { border-color: #2ECC71; }
