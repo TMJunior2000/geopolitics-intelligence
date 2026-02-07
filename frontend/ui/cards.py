@@ -4,91 +4,111 @@ import json
 
 def _generate_html_card(row, card_type="VIDEO", local_tz="Europe/Rome"):
     """
-    Genera una SMART CARD con scroll interno per il testo e footer distintivo per fonte.
+    Genera una SMART CARD HTML che si adatta ai dati disponibili.
+    Include Sentiment, Livelli Tecnici, Driver Fondamentali e Impact Score.
     """
     # ---------------------------------------------------------
-    # 1. PARSING DATI
+    # 1. PARSING DATI & PULIZIA
     # ---------------------------------------------------------
-    # Tickers
+    # Tickers (Badge in basso)
     tickers = row.get('asset_ticker')
     if not isinstance(tickers, list): tickers = [tickers] if tickers else []
     valid_tickers = sorted(list(set([str(t).strip() for t in tickers if t and str(t).lower() not in ['nan', 'none', '']])))
     tickers_html = "".join(f'<span class="ticker-badge">{t}</span>' for t in valid_tickers)
 
-    # Data
+    # Data (Gestione UTC e Formattazione)
     date_str = ""
     try:
         raw_date = row.get('temp_date') or row.get('published_at') or row.get('created_at')
-        if isinstance(raw_date, (pd.Series, list)): raw_date = raw_date[0] if len(raw_date)>0 else None
+        if isinstance(raw_date, (pd.Series, list)): 
+            raw_date = raw_date[0] if len(raw_date)>0 else None
+        
         if raw_date and str(raw_date).lower() != 'nat':
             dt = pd.to_datetime(str(raw_date), utc=True).tz_convert(local_tz)
             date_str = dt.strftime("%d %b %H:%M")
     except: pass
 
-    # Summary/Titolo (NON TRONCATO nel codice, lo gestisce il CSS con scroll)
+    # Summary/Titolo (Gestito dal CSS w-body per lo scroll)
     summary = row.get('summary_card') or row.get('video_summary') or row.get('title') or "..."
     summary = str(summary).replace('"', '&quot;')
     
-    # Tooltip (per vedere tutto passando il mouse)
+    # Tooltip nativo (per leggere tutto passando il mouse)
     tooltip_attr = f'title="{summary}"'
 
+    # Sentiment (Recupero e Stile)
+    raw_sent = str(row.get('sentiment', '')).upper()
+    sentiment_html = ""
+    if raw_sent and raw_sent not in ['NAN', 'NONE', '']:
+        sent_color = "#2ECC71" if "BULL" in raw_sent else "#EF4444" if "BEAR" in raw_sent else "#94A3B8"
+        sentiment_html = f'<span style="color:{sent_color}; font-size:9px; font-weight:700; margin-right:8px;">{raw_sent}</span>'
+
     # ---------------------------------------------------------
-    # 2. LOGICA VISIVA & FONTI (Il cuore della distinzione)
+    # 2. LOGICA VISIVA (TRUMP vs VIDEO)
     # ---------------------------------------------------------
     extra_html = ""
     header_html = ""
     
-    # --- CASO TRUMP ---
+    # --- A. CASO TRUMP (Breaking News) ---
     if card_type == "TRUMP":
         badge_text = "TRUMP WATCH"
         bg_style = "background: linear-gradient(135deg, #002D72 0%, #C8102E 100%);"
-        footer_label = "TRUTH SOCIAL" # Più preciso di "Intel"
+        footer_label = "TRUTH SOCIAL"
         
         # Impact Score Bar
         score = row.get('impact_score', 0)
         try: score = int(float(score))
         except: score = 1
+        
         s_color = "#EF4444" if score >= 4 else "#F59E0B"
-        pct = score * 20
+        pct = min(score * 20, 100)
         
         extra_html = f"""
         <div class="impact-bar-container">
-            <div style="display:flex; justify-content:space-between; font-size:9px; color:#94A3B8; margin-bottom:2px;">
-                <span>MARKET IMPACT</span>
-                <span style="color:{s_color}; font-weight:bold;">{score}/5</span>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                {sentiment_html}
+                <div style="font-size:9px; color:#94A3B8;">
+                    IMPACT <span style="color:{s_color}; font-weight:bold;">{score}/5</span>
+                </div>
             </div>
             <div class="impact-track"><div class="impact-fill" style="width:{pct}%; background:{s_color};"></div></div>
         </div>
         """
     
-    # --- CASO VIDEO (Distinzione per Stile/Source) ---
+    # --- B. CASO VIDEO (Analisi Mercato) ---
     else:
         style = str(row.get('channel_style', 'MARKET')).upper()
         
-        # Recommendation
+        # Recommendation Badge
         rec = str(row.get('recommendation', 'WATCH')).upper()
         if rec not in ['LONG', 'SHORT', 'WATCH', 'HOLD']: rec = 'WATCH'
         
-        # Horizon
+        # Time Horizon
         horizon = row.get('time_horizon')
         hor_html = f'<span style="color:#64748B; font-size:9px; font-weight:600;"> • {horizon}</span>' if horizon else ""
         
-        header_html = f'<div style="margin-bottom:6px;"><span class="rec-badge rec-{rec}">{rec}</span>{hor_html}</div>'
+        # Header (Rec Badge + Sentiment + Horizon)
+        header_html = f"""
+        <div style="margin-bottom:6px; display:flex; align-items:center;">
+            <span class="rec-badge rec-{rec}">{rec}</span>
+            {sentiment_html}
+            {hor_html}
+        </div>
+        """
 
-        # --- DISTINZIONE FONTI (Senza nomi canali) ---
+        # --- DISTINZIONE FONTI (Colori e Footer) ---
         if "TECNICA" in style:
-            # SOURCE 2 (Lorenzo) -> Blu
-            bg_style = "background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);"
+            # Source 2 (Analisi Tecnica)
+            bg_style = "background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);" # Blu
             badge_text = "TECNICA"
-            footer_label = "TECHNICAL SETUP" # Identifica Source 2
+            footer_label = "TECHNICAL SETUP"
             
-            # Griglia Prezzi (Entry/Target/Stop)
+            # Griglia Prezzi (Entry/Target/Stop) - Solo se esistono
             entry = row.get('entry_zone')
             target = row.get('target_price')
             stop = row.get('stop_invalidation')
             
             if (entry or target or stop) and str(entry).lower() != 'nan':
-                def f(x): return str(x) if x and str(x).lower() not in ['nan','none'] else "-"
+                def f(x): return str(x) if x and str(x).lower() not in ['nan','none', 'null'] else "-"
                 extra_html += f"""
                 <div class="levels-container">
                     <div class="level-box"><div class="level-label">ENTRY</div><div class="level-val" style="color:#60A5FA">{f(entry)}</div></div>
@@ -98,23 +118,18 @@ def _generate_html_card(row, card_type="VIDEO", local_tz="Europe/Rome"):
                 """
 
         elif "QUANT" in style or "CERTIFICA" in str(summary).upper():
-            # SOURCE 3 (Giancarlo/Certificati) -> Viola
-            bg_style = "background: linear-gradient(135deg, #581c87 0%, #a855f7 100%);"
+            # Source 3 (Certificati / Quant)
+            bg_style = "background: linear-gradient(135deg, #581c87 0%, #a855f7 100%);" # Viola
             badge_text = "STRATEGIA"
-            footer_label = "STRATEGY & YIELD" # Identifica Source 3 (Certificati/Quant)
+            footer_label = "STRATEGY & YIELD"
             
-            # Per i certificati, mostriamo driver o dettagli
-            # (Codice driver sotto)
-
         else:
-            # SOURCE 1 (Vincenzo/Fondamentale) -> Verde
-            bg_style = "background: linear-gradient(135deg, #064e3b 0%, #10b981 100%);"
+            # Source 1 (Fondamentale / Macro)
+            bg_style = "background: linear-gradient(135deg, #064e3b 0%, #10b981 100%);" # Verde
             badge_text = "FONDAMENTALE"
-            footer_label = "MACRO SCENARIO" # Identifica Source 1
+            footer_label = "MACRO SCENARIO"
 
-        # Key Drivers (Comune a tutti i video se presenti)
-        # Se Tecnica ha già la griglia, magari non mettiamo i driver per spazio, 
-        # ma se ci sono è meglio metterli.
+        # Key Drivers (Lista Puntata) - Comune a tutti i video se presente
         raw_drv = row.get('key_drivers')
         if raw_drv:
             try:
@@ -123,12 +138,13 @@ def _generate_html_card(row, card_type="VIDEO", local_tz="Europe/Rome"):
                 else: d_list = []
                 
                 if d_list:
+                    # Max 3 driver per non allungare troppo la card
                     lis = "".join(f'<div class="driver-row"><span class="driver-dot">•</span><span class="driver-text">{d}</span></div>' for d in d_list[:3])
                     extra_html += f'<div class="drivers-container">{lis}</div>'
             except: pass
 
     # ---------------------------------------------------------
-    # 3. ASSEMBLAGGIO HTML
+    # 3. ASSEMBLAGGIO HTML FINALE
     # ---------------------------------------------------------
     html = f"""
     <div class="w-card" {tooltip_attr}>
@@ -154,13 +170,14 @@ def _generate_html_card(row, card_type="VIDEO", local_tz="Europe/Rome"):
     
     return " ".join(html.split())
 
-# --- FUNZIONI DI RENDER ---
-# (Queste restano uguali a prima, assicurati solo che chiamino _generate_html_card)
+
+# ==============================================================================
+# FUNZIONI DI RENDERIZZAZIONE (LAYOUT)
+# ==============================================================================
 
 def render_carousel(df):
-    if df.empty:
-        st.warning("⚠️ Nessun dato disponibile per il carosello.")
-        return
+    """Renderizza il carosello orizzontale 'Daily Briefing'."""
+    if df.empty: return
 
     # 1. Preparazione Data Unificata
     df_c = df.copy()
@@ -171,18 +188,18 @@ def render_carousel(df):
     # Conversione UTC
     df_c['temp_date'] = pd.to_datetime(df_c['temp_date'], utc=True)
     
-    # 2. Filtro Temporale (Ultimo Giorno)
+    # 2. Filtro: Solo le ultime 24-48h o ultimi X item
     latest_ts = df_c['temp_date'].max()
     target_date = latest_ts.normalize()
     
-    mask = (df_c['temp_date'] >= target_date) & (df_c['temp_date'] < target_date + pd.Timedelta(days=1))
+    mask = (df_c['temp_date'] >= target_date)
     today_df = df_c.loc[mask].copy()
 
     if today_df.empty: return
 
     carousel_items = []
 
-    # A. TRUMP (Raggruppati)
+    # A. TRUMP (Raggruppati per Video URL)
     trump_raw = today_df[today_df['feed_type'] == 'SOCIAL_POST']
     if not trump_raw.empty:
         grouped = trump_raw.groupby('video_url', as_index=False).agg({
@@ -190,7 +207,8 @@ def render_carousel(df):
             'published_at': 'first',      
             'temp_date': 'first',         
             'asset_ticker': list,         
-            'impact_score': 'max',        
+            'impact_score': 'max',
+            'sentiment': 'first',        
             'feed_type': 'first',
             'video_url': 'first'
         })
@@ -201,7 +219,7 @@ def render_carousel(df):
     if not market_raw.empty:
         carousel_items.extend(market_raw.to_dict('records'))
 
-    # 4. Ordinamento e Render
+    # Ordinamento temporale decrescente
     carousel_items.sort(key=lambda x: x['temp_date'], reverse=True)
 
     formatted_date = target_date.strftime('%d %B')
@@ -223,7 +241,9 @@ def render_carousel(df):
 
     st.markdown(f'<div class="worldy-carousel">{cards_html}</div>', unsafe_allow_html=True)
 
+
 def render_trump_section(df):
+    """Renderizza la griglia verticale completa per Trump."""
     trump_df = df[df['feed_type'] == 'SOCIAL_POST'].copy()
     if trump_df.empty: return
 
@@ -233,11 +253,13 @@ def render_trump_section(df):
         </div>
     """, unsafe_allow_html=True)
 
+    # Raggruppamento per evitare duplicati visivi
     grouped_df = trump_df.groupby('video_url', as_index=False).agg({
         'summary_card': 'first',
         'created_at': 'first',
         'asset_ticker': list,
         'impact_score': 'max',
+        'sentiment': 'first',
         'feed_type': 'first'
     }).sort_values(by='created_at', ascending=False)
 
@@ -247,7 +269,12 @@ def render_trump_section(df):
     
     st.markdown(f'<div class="worldy-grid">{cards_html}</div>', unsafe_allow_html=True)
 
+
 def render_market_section(df, assets_filter="TUTTI"):
+    """
+    (Legacy) Renderizza una griglia semplice filtrata.
+    Utile se si vuole vedere tutto insieme senza divisione per asset.
+    """
     video_df = df[df['feed_type'] == 'VIDEO'].copy()
     
     if assets_filter != "TUTTI":
@@ -266,14 +293,13 @@ def render_market_section(df, assets_filter="TUTTI"):
         cards_html += _generate_html_card(row, card_type="VIDEO")
     
     st.markdown(f'<div class="worldy-grid">{cards_html}</div>', unsafe_allow_html=True)
-    
+
 
 def render_all_assets_sections(df):
     """
     Renderizza una sezione separata per OGNI Asset presente nei dati VIDEO.
-    Ogni sezione è un CAROSELLO orizzontale per risparmiare spazio verticale.
+    Ogni sezione è un CAROSELLO orizzontale per compattezza.
     """
-    # Filtra solo i video (Market Insights)
     video_df = df[df['feed_type'] == 'VIDEO'].copy()
     
     if video_df.empty:
@@ -282,39 +308,41 @@ def render_all_assets_sections(df):
 
     # Trova tutti i ticker unici
     unique_tickers = video_df['asset_ticker'].dropna().unique().tolist()
-    # Pulizia e ordinamento
     unique_tickers = sorted([t for t in unique_tickers if str(t).strip() != ''])
 
     for ticker in unique_tickers:
-        # Filtra dati per questo asset
+        # Filtra dati
         asset_data = video_df[video_df['asset_ticker'] == ticker]
-        
         if asset_data.empty: continue
         
-        # Ordina per data (più recente prima)
-        # (Assumiamo che published_at sia già datetime o la convertiamo al volo se serve)
-        # asset_data = asset_data.sort_values(by='published_at', ascending=False)
-        
-        # Recupera il nome esteso dell'asset
-        asset_name = asset_data['asset_name'].dropna().iloc[0] if 'asset_name' in asset_data.columns and not asset_data['asset_name'].dropna().empty else ticker
+        # Recupera nome esteso (se disponibile)
+        try:
+            asset_name_series = asset_data['asset_name'].dropna()
+            asset_name = asset_name_series.iloc[0] if not asset_name_series.empty else ticker
+        except:
+            asset_name = ticker
 
-        # --- RENDER HEADER SEZIONE ASSET ---
+        # Header Asset
         count = len(asset_data)
         st.markdown(f"""
-            <div style="margin-top: 30px; margin-bottom: 10px; padding-left: 5px; display: flex; align-items: center;">
+            <div style="margin-top: 35px; margin-bottom: 15px; padding-left: 5px; display: flex; align-items: baseline; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom:5px;">
                 <h3 style="margin: 0; color: #F8FAFC; font-size: 22px; font-family: 'Space Grotesk', sans-serif;">
-                    {asset_name} <span style="color: #2ECC71; font-size: 18px;">{ticker}</span>
+                    {asset_name} <span style="color: #2ECC71; font-size: 16px; margin-left:5px;">{ticker}</span>
                 </h3>
-                <span style="margin-left: 12px; font-size: 10px; font-weight: 700; color: #64748B; background: rgba(15,23,42,0.8); padding: 2px 8px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1);">
-                    {count}
+                <span style="margin-left: auto; font-size: 10px; font-weight: 700; color: #64748B; background: rgba(15,23,42,0.8); padding: 2px 8px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1);">
+                    {count} INSIGHTS
                 </span>
             </div>
         """, unsafe_allow_html=True)
 
-        # --- RENDER CAROSELLO CARDS (MODIFICA QUI) ---
+        # Genera Card HTML
         cards_html = ""
+        # Ordina per data
+        if 'published_at' in asset_data.columns:
+             asset_data = asset_data.sort_values(by='published_at', ascending=False)
+
         for _, row in asset_data.iterrows():
             cards_html += _generate_html_card(row, card_type="VIDEO")
         
-        # Usiamo 'worldy-carousel' invece di 'worldy-grid'
+        # Renderizza come Carosello Orizzontale
         st.markdown(f'<div class="worldy-carousel">{cards_html}</div>', unsafe_allow_html=True)
