@@ -202,3 +202,43 @@ h1, h2, h3 {
 .w-card:hover::before {
     opacity: 1;
 }
+
+/* --- NUOVO CAROSELLO ORIZZONTALE (Specifico) --- */
+.worldy-carousel {
+    display: flex;               /* Mette gli elementi in riga invece che in griglia */
+    overflow-x: auto;            /* Abilita lo scroll orizzontale */
+    gap: 20px;                   /* Spazio tra le card */
+    padding: 10px 5px 25px 5px;  /* Padding extra sotto per la scrollbar */
+    scroll-snap-type: x mandatory; /* Effetto calamita quando scorri */
+    
+    /* Stile Scrollbar (Firefox) */
+    scrollbar-width: thin;
+    scrollbar-color: #2ECC71 #0F172A;
+}
+
+/* Regole specifiche per le card QUANDO sono dentro il carosello */
+.worldy-carousel .w-card {
+    min-width: 320px;            /* Larghezza fissa obbligatoria per attivare lo scroll */
+    max-width: 320px;            /* Impedisce che diventino enormi */
+    flex: 0 0 auto;              /* Impedisce alla card di restringersi */
+    scroll-snap-align: start;    /* La card si allinea a sinistra allo stop */
+}
+
+/* Stile Scrollbar (Chrome, Edge, Safari) */
+.worldy-carousel::-webkit-scrollbar {
+    height: 8px;                 /* Altezza barra orizzontale */
+}
+
+.worldy-carousel::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.5);
+    border-radius: 10px;
+}
+
+.worldy-carousel::-webkit-scrollbar-thumb {
+    background: #2ECC71;         /* Colore verde Worldy */
+    border-radius: 10px;
+}
+
+.worldy-carousel::-webkit-scrollbar-thumb:hover {
+    background: #27ae60;
+}

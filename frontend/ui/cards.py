@@ -178,6 +178,8 @@ def render_carousel(df):
     # 4. Ordinamento e Render
     carousel_items.sort(key=lambda x: x['temp_date'], reverse=True)
 
+    # 5. RENDER TITOLO E CAROSELLO
+    # Formatta data titolo (es. 06 February)
     formatted_date = target_date.strftime('%d %B')
     
     st.markdown(f"""
@@ -189,10 +191,15 @@ def render_carousel(df):
         </div>
     """, unsafe_allow_html=True)
 
+    # Genera HTML Card
     cards_html = ""
     for item in carousel_items:
+        # Determina tipo
         ftype = item.get('feed_type')
         c_type = "TRUMP" if ftype == 'SOCIAL_POST' else "VIDEO"
+        
         cards_html += _generate_html_card(item, card_type=c_type)
 
-    st.markdown(f'<div class="worldy-grid">{cards_html}</div>', unsafe_allow_html=True)
+    # --- MODIFICA QUI ---
+    # Usiamo la classe specifica 'worldy-carousel' invece di 'worldy-grid'
+    st.markdown(f'<div class="worldy-carousel">{cards_html}</div>', unsafe_allow_html=True)
