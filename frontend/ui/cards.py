@@ -97,9 +97,23 @@ def _generate_html_card(row, card_type="VIDEO", local_tz="Europe/Rome"):
 
         # --- DISTINZIONE FONTI (Colori e Footer) ---
         if "TECNICA" in style:
-            # Source 2 (Analisi Tecnica)
-            bg_style = "background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);" # Blu
-            badge_text = "TECNICA"
+            # Recuperiamo il source_id in modo sicuro (gestendo float/stringhe/NaN)
+            try:
+                sid = int(float(row.get('source_id', 0)))
+            except:
+                sid = 0
+
+            # LOGICA COLORE: Se Source 2 = Grigio, Altrimenti = Blu
+            if sid == 2:
+                # STILE GRIGIO "TITANIUM" (Per Source 2)
+                bg_style = "background: linear-gradient(135deg, #334155 0%, #64748B 100%);"
+                # Opzionale: se vuoi distinguere anche il badge puoi scrivere "TECNICA FX" o lasciare "TECNICA"
+                badge_text = "TECNICA" 
+            else:
+                # STILE BLU (Per tutti gli altri, es. Source 3)
+                bg_style = "background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);"
+                badge_text = "TECNICA"
+
             footer_label = "TECHNICAL SETUP"
             
             # Griglia Prezzi (Entry/Target/Stop) - Solo se esistono
