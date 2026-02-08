@@ -38,6 +38,7 @@ Jinja2==3.1.6
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
 MarkupSafe==3.0.3
+metatrader5==5.0.5572
 more-itertools==10.8.0
 multidict==6.7.1
 narwhals==2.15.0
