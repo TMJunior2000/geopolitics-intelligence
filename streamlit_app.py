@@ -3,6 +3,9 @@ import pandas as pd
 from database.repository import MarketRepository
 from frontend.ui.styles import load_css
 from frontend.ui.cards import render_trump_section, render_carousel, render_all_assets_sections, _generate_html_card, render_market_section
+from backend.broker import TradingAccount
+from backend.risk_engine import SurvivalRiskEngine
+from backend.strategy import TrafficLightSystem
 
 # 1. SETUP & DATI
 st.set_page_config(page_title="Market Intelligence AI", page_icon="🦅", layout="wide")
@@ -24,6 +27,12 @@ def load_data():
         return pd.DataFrame()
 
 df = load_data()
+
+# 0. INIZIALIZZA SISTEMI (Mock)
+if 'broker' not in st.session_state:
+    st.session_state.broker = TradingAccount(balance=200.0) # Conto da $200
+    st.session_state.risk_engine = SurvivalRiskEngine(st.session_state.broker)
+    st.session_state.strategy = TrafficLightSystem(st.session_state.broker)
 
 # ---------------------------------------------------------
 # 3. HEADER & NAVIGAZIONE IBRIDA
@@ -125,5 +134,74 @@ else:
 
     elif selected_view == "🧠 MARKET INSIGHTS":
         render_all_assets_sections(df)
+    
+st.markdown("---")
+st.markdown("## 🛡️ KAIROS TRADING DESK")
+
+# 1. VISUALIZZA STATO CONTO
+acct = st.session_state.broker.get_account_info()
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("💰 Balance", f"${acct['balance']:.2f}")
+c2.metric("📈 Equity", f"${acct['equity']:.2f}")
+c3.metric("🔒 Margin", f"${acct['used_margin']:.2f}")
+# Colore dinamico per lo spazio vitale
+surv_color = "normal" if acct['free_margin'] > 50 else "off"
+c4.metric("🫁 Free Oxygen", f"${acct['free_margin']:.2f}", delta_color=surv_color)
+
+# 2. SEMAFORO POSIZIONI APERTE
+open_positions = st.session_state.broker.get_positions()
+if open_positions:
+    st.markdown("### 🚦 Gestione Posizioni Aperte")
+    traffic_signals = st.session_state.strategy.analyze_portfolio(df)
+    
+    if not traffic_signals:
+        st.info("Nessuna nuova insight rilevante per le tue posizioni.")
+    
+    for signal in traffic_signals:
+        color = "🟢" if signal['status'] == "GREEN" else "🟡" if signal['status'] == "YELLOW" else "🔴"
+        with st.container(border=True):
+            col_icon, col_info, col_act = st.columns([1, 4, 2])
+            with col_icon: st.markdown(f"# {color}")
+            with col_info:
+                st.markdown(f"**{signal['ticker']} ({signal['my_pos']})**")
+                st.caption(f"News: {signal['card_summary']}")
+                st.write(f"**AI Dice:** {signal['msg']}")
+            with col_act:
+                if signal['status'] == "RED":
+                    st.button(f"CHIUDI {signal['ticker']}", key=f"close_{signal['ticker']}", type="primary")
+
+# 3. SIMULATORE DI INGRESSO (Risk Engine)
+st.markdown("### ⚡ Smart Entry Calculator")
+with st.container(border=True):
+    # Simuliamo che l'utente clicchi su una card, qui mettiamo input manuali per test
+    col_in1, col_in2, col_in3 = st.columns(3)
+    target_ticker = col_in1.selectbox("Asset", ["NQ100", "BTCUSD", "XAUUSD", "EURUSD"])
+    entry_price = col_in2.number_input("Prezzo Ingresso", value=25000.0)
+    stop_loss = col_in3.number_input("Stop Loss", value=25200.0)
+    
+    if st.button("🧮 CALCOLA SIZE SICURA"):
+        # Determina direzione
+        direction = "SHORT" if stop_loss > entry_price else "LONG"
+        
+        # Chiama il Risk Engine
+        result = st.session_state.risk_engine.check_trade_feasibility(
+            target_ticker, direction, entry_price, stop_loss
+        )
+        
+        if result['allowed']:
+            st.success("✅ **TRADE APPROVATO DAL RISK MANAGER**")
+            st.markdown(f"""
+            Per non bruciare il conto (Zero-Ruin), puoi aprire massimo:
+            # **{result['max_lots']} Lotti**
+            
+            * **Margine Richiesto:** ${result['margin_required']}
+            * **Rischio Monetario (SL):** ${result['risk_monetary']}
+            * **Equity Residua (Worst Case):** ${result['survival_equity']}
+            """)
+            st.button(f"Esegui {result['max_lots']} {target_ticker}", type="primary")
+        else:
+            st.error(f"⛔ **TRADE BLOCCATO**")
+            st.warning(result['reason'])
+            st.markdown("Il sistema impedisce l'apertura per proteggere il capitale residuo.")    
     
 st.markdown("<div style='height: 50px;'></div>", unsafe_allow_html=True)
