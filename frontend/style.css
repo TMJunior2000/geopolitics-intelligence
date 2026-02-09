@@ -223,3 +223,99 @@ div[data-baseweb="menu"] li:hover {
 .section-header { border-left: 4px solid; padding-left: 15px; margin: 40px 0 20px 0; }
 .header-trump { border-color: #E74C3C; }
 .header-market { border-color: #2ECC71; }
+
+/* =============================================================================
+   5. TRADING DESK & DASHBOARD WIDGETS (NEW)
+   ============================================================================= */
+
+/* Contenitore Principale stile "Vetro Scuro" */
+.trading-card-container {
+    background: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(46, 204, 113, 0.2); /* Bordo verde sottile */
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 25px;
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+}
+
+/* Header interno alle sezioni del Desk */
+.trading-header {
+    font-family: 'Space Grotesk', sans-serif;
+    color: #F8FAFC;
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    padding-bottom: 10px;
+}
+
+.trading-header i { margin-right: 10px; }
+
+/* --- METRICHE ACCOUNT (HUD) --- */
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 15px;
+}
+
+.metric-box {
+    background: rgba(2, 6, 23, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 15px;
+    text-align: center;
+    transition: all 0.3s ease;
+}
+
+.metric-box:hover {
+    border-color: rgba(46, 204, 113, 0.3);
+    transform: translateY(-2px);
+    background: rgba(46, 204, 113, 0.05);
+}
+
+.metric-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #94A3B8;
+    font-weight: 700;
+    margin-bottom: 5px;
+}
+
+.metric-value {
+    font-family: 'Space Grotesk', monospace;
+    font-size: 24px;
+    font-weight: 700;
+    color: #F8FAFC;
+}
+
+.metric-value.money { color: #2ECC71; text-shadow: 0 0 15px rgba(46, 204, 113, 0.2); }
+.metric-value.risk { color: #F59E0B; }
+.metric-value.danger { color: #EF4444; text-shadow: 0 0 15px rgba(239, 68, 68, 0.2); }
+
+/* --- SEGNALI & INPUT --- */
+/* Stile personalizzato per i container interni di Streamlit */
+[data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"] {
+    gap: 1rem;
+}
+
+/* Stile speciale per i bottoni nel desk */
+div.stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #166534 0%, #15803d 100%);
+    border: 1px solid #22c55e;
+    color: white;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    box-shadow: 0 0 15px rgba(34, 197, 94, 0.4);
+    transition: all 0.3s;
+}
+
+div.stButton > button[kind="primary"]:hover {
+    box-shadow: 0 0 25px rgba(34, 197, 94, 0.6);
+    transform: scale(1.02);
+}

@@ -1,43 +1,40 @@
+from typing import Any
 import pandas as pd
 import streamlit as st
-import random
-
-# --- BLOCCO MAGICO IBRIDO ---
-# Tenta di importare la libreria MetaTrader5.
-# Se siamo su Windows (Tuo PC), la trova e imposta HAS_MT5 = True.
-# Se siamo su Streamlit Cloud (Linux), fallisce silenziosamente e imposta HAS_MT5 = False.
-try:
-    import MetaTrader5 as mt5
-    HAS_MT5 = True
-except ImportError:
-    HAS_MT5 = False
+import time
+import MetaTrader5 as mt5
+ 
 
 class TradingAccount:
-    # MODIFICA FONDAMENTALE QUI SOTTO: aggiungi ", balance=200.0"
     def __init__(self, balance=200.0):
         """
         Inizializza il collegamento al Broker.
-        Accetta 'balance' come capitale iniziale per la modalità simulazione.
         """
         self.is_connected = False
         self.status = "🟡 SIMULATION (Cloud)"
-        self.simulated_balance = balance # Salviamo il saldo per la demo
+        self.simulated_balance = balance 
         
-        # Se la libreria è presente (Siamo su Windows), proviamo a connetterci a MT5
-        if HAS_MT5:
-            if mt5.initialize():
-                self.is_connected = True
-                self.status = "🟢 LIVE (FPMarkets)"
+        # Connessione MT5 (Solo Windows/Locale)
+        if mt5.initialize():
+            self.is_connected = True
+            
+            # Info conto base
+            account_info = mt5.account_info()
+            if account_info:
+                broker_name = account_info.company
+                login = account_info.login
+                self.status = f"🟢 LIVE ({broker_name} - {login})"
             else:
-                print(f"MT5 presente ma errore connessione: {mt5.last_error()}")
-                self.status = "🔴 ERRORE MT5"
-        
+                self.status = "🟢 LIVE (MT5 Connected)"
+        else:
+            print(f"MT5 presente ma errore connessione: {mt5.last_error()}")
+            self.status = "🔴 ERRORE MT5"
+
     def get_account_info(self):
         """
-        Restituisce le informazioni vitali del conto:
-        Balance, Equity, Margine Usato, Margine Libero.
+        Documentazione: mt5.account_info()
+        Restituisce named tuple con balance, equity, margin_free.
         """
-        # 1. MODO REALE (Tuo PC Windows con MT5 aperto)
         if self.is_connected:
             info = mt5.account_info()
             if info:
@@ -48,32 +45,31 @@ class TradingAccount:
                     "used_margin": info.margin,
                     "free_margin": info.margin_free,
                     "positions_count": mt5.positions_total(),
+                    "leverage_account": info.leverage, 
                     "status": self.status
                 }
         
-        # 2. MODO SIMULAZIONE (Streamlit Cloud / Demo)
-        # Usiamo self.simulated_balance che abbiamo salvato nell'init
+        # MODO SIMULAZIONE
         return {
             "balance": self.simulated_balance,
-            "equity": self.simulated_balance, # Assumiamo no P&L all'inizio
+            "equity": self.simulated_balance, 
             "floating_pl": 0.0,
             "used_margin": 0.0,
             "free_margin": self.simulated_balance,
             "positions_count": 0,
+            "leverage_account": 30, # Default prudente
             "status": self.status
         }
 
     def get_positions(self):
         """
-        Scarica le posizioni aperte per calcolare la 'Phantom Equity'.
+        Documentazione: mt5.positions_get()
         """
-        # 1. MODO REALE
         if self.is_connected:
             positions = mt5.positions_get()
             if positions:
                 formatted = []
                 for p in positions:
-                    # Mappiamo i dati di MT5 nel formato universale del Risk Engine
                     formatted.append({
                         "ticket": p.ticket,
                         "symbol": p.symbol,
@@ -82,46 +78,142 @@ class TradingAccount:
                         "entry_price": p.price_open,
                         "current_price": p.price_current,
                         "stop_loss": p.sl,
-                        "swap": p.swap,
                         "profit": p.profit
                     })
                 return formatted
-        
-        # 2. MODO SIMULAZIONE
         return []
 
-    def get_asset_specs(self, ticker):
+    def get_all_available_tickers(self):
         """
-        Restituisce le specifiche dell'asset (Leva, Dimensione Contratto, Valore Tick).
+        Documentazione: mt5.symbols_get(visible=True)
+        Recupera solo i simboli presenti nel 'Market Watch'.
         """
-        # 1. MODO REALE (Chiediamo al Broker)
         if self.is_connected:
-            symbol_info = mt5.symbol_info(ticker)
-            if symbol_info:
-                try:
-                    acc_info = mt5.account_info()
-                    acc_lev = acc_info.leverage if acc_info else 30
-                except:
-                    acc_lev = 30
-                
-                return {
-                    "leverage": acc_lev,
-                    "contract_size": symbol_info.trade_contract_size,
-                    "tick_value": symbol_info.trade_tick_value
-                }
-
-        # 2. MODO SIMULAZIONE (Database statico di specifiche standard)
-        specs = {
-            "NQ100": {"leverage": 50, "contract_size": 20, "tick_value": 0.25},
-            "USTECH100": {"leverage": 50, "contract_size": 20, "tick_value": 0.25},
-            "DJ30":  {"leverage": 50, "contract_size": 5, "tick_value": 1.0},
-            "SPX500": {"leverage": 50, "contract_size": 50, "tick_value": 0.25},
-            "BTCUSD": {"leverage": 10, "contract_size": 1, "tick_value": 1.0},
-            "EURUSD": {"leverage": 30, "contract_size": 100000, "tick_value": 1.0},
-            "XAUUSD": {"leverage": 20, "contract_size": 100, "tick_value": 1.0},
-            "META": {"leverage": 5, "contract_size": 1, "tick_value": 1.0},
-            "MSFT": {"leverage": 5, "contract_size": 1, "tick_value": 1.0},
-        }
+            symbols = mt5.symbols_get(visible=True)
+            if symbols:
+                return [s.name for s in symbols]
         
-        clean_ticker = ticker.split('.')[0].replace('#', '')
-        return specs.get(clean_ticker, {"leverage": 20, "contract_size": 1, "tick_value": 1.0})
+        # Fallback simulazione
+        return ["NQ100", "BTCUSD", "EURUSD", "XAUUSD", "NVDA.xnas"]
+
+    def get_asset_specs(self, ticker):
+            """
+            RECUPERA SPECIFICHE ASSET CON DEBUG PRINTS.
+            """
+            # 1. MODO REALE (MT5)
+            if self.is_connected:
+                if not mt5.symbol_select(ticker, True):
+                    print(f"🔴 DEBUG: Impossibile selezionare {ticker}")
+                    return None
+
+                # Doc: mt5.symbol_info("SYMBOL") restituisce named tuple
+                info = mt5.symbol_info(ticker)
+                
+                if info:
+                    print(f"\n--- 🕵️‍♂️ DEBUG ASSET: {ticker} ---")
+                    print(f"   > Path: {info.path}")
+                    print(f"   > Margin Initial (Raw): {info.margin_initial}")
+                    print(f"   > Margin Maintenance (Raw): {info.margin_maintenance}")
+                    print(f"   > Contract Size: {info.trade_contract_size}")
+                    
+                    # --- CALCOLO LEVA REALE (Doc: margin_initial) ---
+                    margin_rate = info.margin_initial
+                    
+                    # Fallback doc: margin_maintenance
+                    if margin_rate == 0:
+                        print("   ⚠️ Margin Initial è 0. Provo con Margin Maintenance...")
+                        margin_rate = info.margin_maintenance
+
+                    real_leverage = 1.0
+
+                    if margin_rate > 0:
+                        # FORMULA: 1 / 0.10 = 10.0 (Leva 1:10)
+                        real_leverage = 1.0 / margin_rate
+                        print(f"   ✅ CALCOLO: 1 / {margin_rate} = Leva {real_leverage}")
+                    else:
+                        print("   ⚠️ Margin Rate è ancora 0. Uso Leva Account + Safety Cap.")
+                        # --- CASO STANDARD / FOREX ---
+                        acc = mt5.account_info()
+                        acc_lev = acc.leverage if acc else 30.0
+                        print(f"   > Leva Account Base: {acc_lev}")
+                        
+                        # SAFETY CAP
+                        path = info.path.upper() 
+                        if "STOCK" in path or "SHARE" in path or "EQUITY" in path or "NASDAQ" in path:
+                            real_leverage = min(acc_lev, 20.0) 
+                            print(f"   🛡️ SAFETY CAP ATTIVATO (Stock/Index): Leva forzata a {real_leverage}")
+                        else:
+                            real_leverage = acc_lev
+                            print(f"   ℹ️ Uso Leva Account Standard: {real_leverage}")
+
+                    return {
+                        "leverage": real_leverage,
+                        "contract_size": info.trade_contract_size,
+                        "tick_value": info.trade_tick_value,
+                        "min_lot": info.volume_min,
+                        "max_lot": info.volume_max,
+                        "step_lot": info.volume_step,
+                        "digits": info.digits
+                    }
+                else:
+                    print(f"🔴 DEBUG: mt5.symbol_info({ticker}) ha restituito None")
+
+            # 2. MODO SIMULAZIONE (Database statico)
+            print(f"🟡 DEBUG: Modo Simulazione per {ticker}")
+            
+            # FIX PYLANCE: Definiamo esplicitamente i valori come float o misti
+            specs_db = {
+                "NQ100": {"leverage": 20.0, "contract_size": 20.0},
+                "BTCUSD": {"leverage": 2.0, "contract_size": 1.0},
+                "EURUSD": {"leverage": 30.0, "contract_size": 100000.0},
+                "XAUUSD": {"leverage": 20.0, "contract_size": 100.0},
+                "NVDA":   {"leverage": 10.0, "contract_size": 1.0},
+            }
+            
+            clean_ticker = ticker.split('.')[0]
+            # Cerchiamo parziale (es. NVDA.xnas -> NVDA)
+            found_key = next((k for k in specs_db if k in clean_ticker), None)
+            
+            # Default generico se non trovato
+            default_spec = {"leverage": 20.0, "contract_size": 1.0}
+            
+            # Ora .get() è felice perché i tipi coincidono (str -> dict[str, float])
+            if found_key:
+                base_spec = specs_db[found_key]
+            else:
+                base_spec = default_spec
+
+            # Default fields per simulazione
+            base_spec["min_lot"] = 0.01
+            base_spec["step_lot"] = 0.01
+            base_spec["digits"] = 2
+            
+            return base_spec
+
+    def get_latest_tick(self, ticker):
+        """
+        Documentazione: mt5.symbol_info_tick(symbol)
+        Restituisce: time, bid, ask, last, volume...
+        """
+        if self.is_connected:
+            if not mt5.symbol_select(ticker, True):
+                return None
+            
+            # Doc: symbol_info_tick restituisce una tupla Tick()
+            tick = mt5.symbol_info_tick(ticker)
+            if tick:
+                return {
+                    "price": tick.ask, # Usiamo ASK per simulare un Buy
+                    "bid": tick.bid,
+                    # Doc: time (Timestamp Unix del server broker)
+                    "timestamp": tick.time 
+                }
+        
+        # Fallback simulazione
+        mock_prices = {
+            "BTCUSD": 96500.0, "EURUSD": 1.0540, "NQ100": 21500.0, "XAUUSD": 2950.0
+        }
+        return {
+            "price": mock_prices.get(ticker, 100.0),
+            "timestamp": int(time.time())
+        }
