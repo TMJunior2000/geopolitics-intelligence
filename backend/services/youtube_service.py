@@ -10,7 +10,7 @@ class YouTubeService:
         videos = []
         
         # --- CONFIGURAZIONE DATE PER BACKFILL ---
-        BACKFILL_START_DATE = datetime(2026, 2, 4)
+        BACKFILL_START_DATE = datetime(2026, 2, 8)
         BACKFILL_END_DATE = datetime(2026, 2, 10, 00, 00, 00)
         
         print(f"   📡 YouTube Fetch: {handle} | Mode: {mode}")
@@ -54,7 +54,7 @@ class YouTubeService:
                     if "marketmind" in ch_title.lower():
                         t_low = title.lower()
                         # Definiamo cosa vogliamo tenere
-                        keyword_valide = ["analisi settimanale", "opzioni 0dte", "premarket"]
+                        keyword_valide = ["analisi settimanale", "opzioni 0dte", "premarket", "Analisi"]
                         
                         # Se il titolo non contiene NESSUNA delle nostre keyword, allora lo scartiamo
                         if not any(key in t_low for key in keyword_valide):
