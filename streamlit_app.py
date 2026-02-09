@@ -98,14 +98,15 @@ if selected_view == "🦅 DASHBOARD":
     # Recupera dati account
     acct = st.session_state.broker.get_account_info()
     
-    # Calcolo classi CSS dinamiche per i colori
+    # Calcolo classi CSS
     margin_class = "money" if acct['free_margin'] > 100 else "risk" if acct['free_margin'] > 50 else "danger"
     
-    # 1. VISUALIZZA STATO CONTO (HTML CUSTOM PER MATCHARE LO STILE)
+    # VISUALIZZA STATO CONTO AGGIORNATO
     st.markdown(f"""
     <div class="trading-card-container">
-        <div class="trading-header">
+        <div class="trading-header" style="display:flex; justify-content:space-between; align-items:center;">
             <span>🛡️ KAIROS TRADING HUD</span>
+            <span style="font-size: 12px; opacity: 0.7; font-family: monospace;">ACC: {acct['login']}</span>
         </div>
         <div class="metrics-grid">
             <div class="metric-box">
@@ -174,167 +175,87 @@ if selected_view == "🦅 DASHBOARD":
         # Wrapper grafico fine
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # 3. SIMULATORE DI INGRESSO (COLONNA DESTRA - MODIFICATA PER FP MARKETS + PREZZO LIVE)
+    # --- COLONNA DESTRA: CALCOLATORE DINAMICO ---
     with col_desk_R:
-        # Wrapper grafico inizio
         st.markdown("""
-        <div class="trading-card-container" style="min-height: 380px; border-color: rgba(241, 196, 15, 0.2);">
+        <div class="trading-card-container" style="min-height: 420px; border-color: rgba(46, 204, 113, 0.3);">
             <div class="trading-header">
-                <span>⚡ SMART ENTRY</span>
+                <span>📊 SMART MARGIN CALCULATOR</span>
             </div>
         """, unsafe_allow_html=True)
 
-        # 1. Recupera Asset dal Broker
         live_assets = st.session_state.broker.get_all_available_tickers()
-        live_assets.sort() 
-
-        # Logica di Pre-selezione
-        default_idx = 0
-        if selected_asset_search and selected_asset_search in live_assets:
-            default_idx = live_assets.index(selected_asset_search)
-        elif "EURUSD" in live_assets:
-            default_idx = live_assets.index("EURUSD")
-
-        target_ticker = st.selectbox("Asset Target", live_assets, index=default_idx)
+        live_assets.sort()
         
-        # 2. RECUPERA DATI LIVE (Prezzo, Leva e Min Lot)
+        # Gestione sicura dell'indice per evitare errore str | None
+        d_idx = 0
+        if selected_asset_search is not None and selected_asset_search in live_assets:
+            try:
+                d_idx = live_assets.index(selected_asset_search)
+            except ValueError:
+                d_idx = 0
+        
+        target_ticker = st.selectbox("Asset", live_assets, index=d_idx, key="hud_ticker")
+
         specs = st.session_state.broker.get_asset_specs(target_ticker)
         tick_info = st.session_state.broker.get_latest_tick(target_ticker)
-        
-        caption_parts = []
-        if specs:
-            caption_parts.append(f"Leva: 1:{int(specs['leverage'])}")
-            caption_parts.append(f"Min: {specs.get('min_lot', 0.01)}")
-        
-        current_price = 0.0
-        if tick_info:
-            current_price = tick_info['price']
-            
-            # --- FIX TIMEZONE (Broker -> Italia) ---
-            # I server MT5 sono solitamente GMT+2/GMT+3. L'Italia è GMT+1.
-            # Differenza media: 1 o 2 ore avanti. FP Markets è spesso +2 ore rispetto all'Italia.
-            # Prendiamo il timestamp grezzo
-            tick_ts = tick_info['timestamp']
-            
-            # Creiamo l'oggetto data base
-            dt_obj = datetime.datetime.fromtimestamp(tick_ts)
-            
-            # SOTTRAIAMO 2 ORE per allinearlo all'Italia (Hack pratico)
-            # Se vedi che è ancora sbagliato di 1 ora, cambia in hours=1
-            dt_obj_ita = dt_obj - datetime.timedelta(hours=2)
-            
-            time_str = dt_obj_ita.strftime('%d/%m %H:%M:%S')
-            
-            caption_parts.append(f"🔴 {current_price} ({time_str})")
-        
-        st.caption(" | ".join(caption_parts))
 
-        # 3. INPUT PREZZI (Pre-compilati con il prezzo attuale)
-        c2a, c2b = st.columns(2)
-        
-        # Se abbiamo il prezzo live, lo usiamo come default nel box
-        default_entry = float(current_price) if current_price > 0 else 0.0
-        
-        # Formattazione intelligente
-        fmt = "%.5f" if "USD" in target_ticker and "BTC" not in target_ticker and "NQ" not in target_ticker else "%.2f"
-
-        with c2a: 
-            entry_input = st.number_input("Entry Price", value=default_entry, step=0.01, format=fmt)
-        with c2b: 
-            stop_input = st.number_input("Stop Loss", value=0.0, step=0.01, format=fmt)
-        
-        st.markdown("<div style='margin-top:10px;'></div>", unsafe_allow_html=True)
-        
-        # 4. CALCOLO
-        if st.button("🧮 CALCOLA SIZE SICURA", type="primary", use_container_width=True):
-            if entry_input > 0 and stop_input > 0:
-                direction = "SHORT" if stop_input > entry_input else "LONG"
-                
-                # Chiama il Risk Engine (Userà la leva corretta di FP Markets)
-                result = st.session_state.risk_engine.check_trade_feasibility(
-                    target_ticker, direction, entry_input, stop_input
+        if specs and tick_info:
+            price = tick_info['price']
+            
+            # 1. INPUT SIZE DINAMICA
+            col_inp, col_res = st.columns([1, 1])
+            with col_inp:
+                selected_size = st.number_input(
+                    "Size (Lots)",
+                    min_value=float(specs['min_lot']),
+                    value=float(specs['min_lot']),
+                    step=0.01 if specs['min_lot'] < 1 else 1.0,
+                    format="%.2f"
                 )
-                
-                st.markdown("---")
-                if result['allowed']:
-                    # Risultato formattato stile "Ticket"
-                    st.markdown(f"""
-                    <div style="text-align:center;">
-                        <div style="font-size:10px; color:#94A3B8; letter-spacing:1px;">SIZE CONSIGLIATA</div>
-                        <div style="font-size:32px; font-weight:700; color:#2ECC71; font-family:'Space Grotesk'; text-shadow:0 0 15px rgba(46,204,113,0.3);">{result['max_lots']} LOTS</div>
-                        <div style="display:flex; justify-content:space-between; margin-top:10px; font-size:11px; color:#CBD5E1;">
-                            <span>Risk: <b>${result['risk_monetary']}</b></span>
-                            <span>Margin: <b>${result['margin_required']}</b></span>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
-                    st.button(f"APRI {direction} {target_ticker}", use_container_width=True)
-                else:
-                    st.markdown(f"""
-                    <div style="text-align:center; padding:10px; background:rgba(239, 68, 68, 0.1); border-radius:8px; border:1px solid rgba(239, 68, 68, 0.3);">
-                        <div style="color:#EF4444; font-weight:700;">⛔ TRADE BLOCCATO</div>
-                        <div style="font-size:11px; color:#FCA5A5; margin-top:5px;">{result['reason']}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-            else:
-                st.warning("Inserisci Prezzo e Stop Loss validi.")
-        
-        # Wrapper grafico fine
+            
+            # 2. CALCOLO DINAMICO
+            # Valore Nozionale = Prezzo * Lotti * Dimensione Contratto
+            notional = price * selected_size * specs['contract_size']
+            # Margine = Nozionale / Leva (rispetta il blocco 1:50)
+            required_margin = notional / specs['leverage']
+
+            with col_res:
+                st.markdown(f"""
+                <div style="background:rgba(46,204,113,0.1); border:1px solid #2ECC71; padding:10px; border-radius:8px; text-align:center; margin-top:25px;">
+                    <div style="font-size:10px; color:#94A3B8;">MARGINE REALE</div>
+                    <div style="font-size:24px; font-weight:700; color:#2ECC71;">${required_margin:.2f}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            st.caption(f"Leva: 1:{specs['leverage']} | Nozionale: ${notional:.2f} | Prezzo: {price}")
+            
+            # 3. RISK ENGINE INTEGRATION
+            st.markdown("---")
+            c1, c2 = st.columns(2)
+            with c1: stop_loss = st.number_input("Stop Loss", value=0.0, format="%.2f")
+            with c2: 
+                if st.button("🧮 CALCOLA SIZE SICURA", use_container_width=True):
+                    res = st.session_state.risk_engine.check_trade_feasibility(target_ticker, "LONG", price, stop_loss)
+                    if res['allowed']: st.success(f"Size OK: {res['max_lots']} lotti")
+                    else: st.error(res['reason'])
+
         st.markdown("</div>", unsafe_allow_html=True)
 
-
-    # === B. CONTENUTO SOTTOSTANTE (CAROSELLO vs RICERCA) ===
-    # ... (Il resto del codice sotto rimane uguale a prima) ...
-    # 1. CASO RICERCA ATTIVA...
+    # === B. FEED CONTENUTI ===
     if selected_asset_search and selected_asset_search != "TUTTI":
-        # ... codice ricerca ...
-        target_asset = selected_asset_search
-        
-        # Header Focus Mode
-        st.markdown(f"""
-        <div style="margin-top: 10px; margin-bottom: 25px; padding: 15px 20px; background: linear-gradient(90deg, rgba(46, 204, 113, 0.1) 0%, transparent 100%); border-left: 4px solid #2ECC71; border-radius: 8px; display:flex; align-items:center; justify-content:space-between;">
-            <div>
-                <h2 style="margin:0; font-size: 32px; color:#F8FAFC;">{target_asset}</h2>
-                <span style="color:#94A3B8; font-size:14px;">Risultati filtrati</span>
-            </div>
-            <div style="text-align:right;">
-                <span style="background:#0F172A; color:#2ECC71; padding:4px 12px; border-radius:6px; font-weight:700; border:1px solid #2ECC71; font-size:10px; letter-spacing:1px;">FOCUS MODE</span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # Filtra dati
-        asset_df = df[df['asset_ticker'] == target_asset].copy()
-        
+        asset_df = df[df['asset_ticker'] == selected_asset_search].copy()
         if not asset_df.empty:
-            asset_df['sort_date'] = asset_df['published_at'].fillna(asset_df['created_at'])
-            asset_df['sort_date'] = pd.to_datetime(asset_df['sort_date'], utc=True)
-            asset_df = asset_df.sort_values(by='sort_date', ascending=False)
-            
-            cards_html = ""
-            for _, row in asset_df.iterrows():
-                ftype = row.get('feed_type', 'VIDEO')
-                c_type = "TRUMP" if ftype == 'SOCIAL_POST' else "VIDEO"
-                cards_html += _generate_html_card(row, card_type=c_type)
-            
+            cards_html = "".join([_generate_html_card(row) for _, row in asset_df.iterrows()])
             st.markdown(f'<div class="worldy-grid">{cards_html}</div>', unsafe_allow_html=True)
-        else:
-            st.info(f"Nessuna informazione trovata per {target_asset}.")
-
-    # 2. CASO STANDARD
     else:
         render_carousel(df)
-        st.markdown("### 📡 Live Intelligence Feed")
         render_all_assets_sections(df)
 
 elif selected_view == "🇺🇸 TRUMP WATCH":
-    # Qui se cerchi un asset, potresti voler vedere solo le card di quell'asset legate a Trump
-    # Oppure ignorare la ricerca. Per ora lascio la vista standard Trump.
     render_trump_section(df)
 
 elif selected_view == "🧠 MARKET INSIGHTS":
-    render_all_assets_sections(df)    
+    render_all_assets_sections(df)
 
 st.markdown("<div style='height: 50px;'></div>", unsafe_allow_html=True)

@@ -8,12 +8,15 @@ class TradingAccount:
         self.is_connected = False
         self.status = "🟡 SIMULATION (Cloud)"
         self.simulated_balance = balance 
-
+        self.account_currency = "USD" 
+        
+        # Tenta la connessione al terminale
         if mt5.initialize():
             self.is_connected = True
             account_info = mt5.account_info()
             if account_info:
                 self.status = f"🟢 LIVE ({account_info.company} - {account_info.login})"
+                self.account_currency = account_info.currency
             else:
                 self.status = "🟢 LIVE (MT5 Connected)"
         else:
@@ -21,32 +24,37 @@ class TradingAccount:
             self.status = "🔴 ERRORE MT5"
 
     def get_account_info(self):
-        if self.is_connected:
-            info = mt5.account_info()
-            if info:
-                return {
-                    "balance": info.balance,
-                    "equity": info.equity,
-                    "floating_pl": info.profit,
-                    "used_margin": info.margin,
-                    "free_margin": info.margin_free,
-                    "positions_count": mt5.positions_total(),
-                    "leverage_account": info.leverage, 
-                    "status": self.status
-                }
-        
-        return {
-            "balance": self.simulated_balance,
-            "equity": self.simulated_balance, 
-            "floating_pl": 0.0,
-            "used_margin": 0.0,
-            "free_margin": self.simulated_balance,
-            "positions_count": 0,
-            "leverage_account": 50, # Default a 50 come richiesto
-            "status": self.status
-        }
+            """Restituisce saldo, equità, margine, leva e NUMERO CONTO."""
+            if self.is_connected:
+                info = mt5.account_info()
+                if info:
+                    return {
+                        "login": info.login,          # <--- AGGIUNGI QUESTA RIGA
+                        "balance": info.balance,
+                        "equity": info.equity,
+                        "floating_pl": info.profit,
+                        "used_margin": info.margin,
+                        "free_margin": info.margin_free,
+                        "positions_count": mt5.positions_total(),
+                        "leverage_account": info.leverage, 
+                        "status": self.status
+                    }
+            
+            # Fallback Simulazione
+            return {
+                "login": 12345678,                # <--- Numero finto per simulazione
+                "balance": self.simulated_balance,
+                "equity": self.simulated_balance, 
+                "floating_pl": 0.0,
+                "used_margin": 0.0,
+                "free_margin": self.simulated_balance,
+                "positions_count": 0,
+                "leverage_account": 50,
+                "status": self.status
+            }
 
     def get_positions(self):
+        """Recupera le posizioni aperte."""
         if self.is_connected:
             positions = mt5.positions_get()
             if positions:
@@ -66,6 +74,7 @@ class TradingAccount:
         return []
 
     def get_all_available_tickers(self):
+        """Recupera i simboli dal Market Watch."""
         if self.is_connected:
             symbols = mt5.symbols_get(visible=True)
             if symbols:
@@ -73,106 +82,81 @@ class TradingAccount:
         return ["NQ100", "BTCUSD", "EURUSD", "XAUUSD", "NVDA.xnas"]
 
     def get_asset_specs(self, ticker):
-        """
-        RECUPERA LEVA REALE BASANDOSI SULLA MODALITÀ DI CALCOLO (CALC_MODE).
-        Logica scoperta:
-        1. Mode CFD -> Leva = 1 / MarginRate (Es. NVDA, BTC)
-        2. Mode CFD_LEVERAGE -> Leva = AccountLev / MarginRate (Es. ORO)
-        3. Mode FOREX -> Leva = AccountLev
-        """
-        if self.is_connected:
-            if not mt5.symbol_select(ticker, True): return None
+            """
+            CALCOLA LEVA REALE E MARGINE MINIMO RISPETTANDO IL BLOCCO ACCOUNT.
+            """
+            if self.is_connected:
+                if not mt5.symbol_select(ticker, True): return None
 
-            info = mt5.symbol_info(ticker)
-            
-            # Recupera Leva Account (il tuo 50:1)
-            acc = mt5.account_info()
-            acc_lev = acc.leverage if acc else 50.0
-            
-            if info:
-                calc_mode = info.trade_calc_mode
-                margin_rate = info.margin_initial
-                if margin_rate == 0: margin_rate = info.margin_maintenance
+                info = mt5.symbol_info(ticker)
+                acc = mt5.account_info()
                 
-                real_leverage = acc_lev # Default iniziale
+                # 1. LEGGE IL BLOCCO ACCOUNT (Tetto Massimo Inviolabile)
+                acc_lev_cap = float(acc.leverage) if acc else 50.0
+                acc_curr = acc.currency if acc else "USD"
                 
-                # --- LOGICA DI CALCOLO BASATA SULLA TUA SCOPERTA ---
-                
-                # CASO 1: CFD Puro (NVDA, BTC)
-                # Qui il margine è una % fissa (es. 0.1 = 10% = Leva 10)
-                if calc_mode == mt5.SYMBOL_CALC_MODE_CFD:
+                if info:
+                    print(f"\n--- 🛡️ VERIFICA BLOCCO LEVA: {ticker} ---")
+                    
+                    margin_rate = info.margin_initial
+                    if margin_rate == 0: margin_rate = info.margin_maintenance
+                    
+                    # Inizializziamo la leva calcolata dell'asset
+                    asset_leverage = acc_lev_cap 
+                    
+                    # --- FASE A: CALCOLO LEVA SPECIFICA ASSET ---
                     if margin_rate > 0:
-                        real_leverage = 1.0 / margin_rate
+                        # Se il tasso è >= 1 (es. ORO), è un divisore. Se < 1 (es. NVDA), è percentuale.
+                        if margin_rate >= 1.0: asset_leverage = acc_lev_cap / margin_rate
+                        else: asset_leverage = 1.0 / margin_rate
                     else:
-                        # Fallback se CFD ma rate 0 (es. casi rari)
-                        real_leverage = 20.0 
+                        # Calcolo dinamico tramite order_calc_margin (solo se le valute coincidono)
+                        if info.currency_profit == acc_curr:
+                            tick = mt5.symbol_info_tick(ticker)
+                            price = tick.ask if tick else 0.0
+                            if price > 0:
+                                try:
+                                    m_req = mt5.order_calc_margin(mt5.ORDER_TYPE_BUY, ticker, 1.0, price)
+                                    if m_req and m_req > 0:
+                                        notional = price * 1.0 * info.trade_contract_size
+                                        asset_leverage = notional / m_req
+                                except: pass
+                        else:
+                            # Fallback per asset esteri (Hong Kong etc.)
+                            path = info.path.upper()
+                            if any(x in path for x in ["STOCK", "SHARE"]): asset_leverage = 20.0
+                            else: asset_leverage = acc_lev_cap
 
-                # CASO 2: CFD Leverage (ORO/Forex Exotics)
-                # Qui il margine è un divisore della leva account
-                # Es. Rate 1.0 -> Leva 50 / 1.0 = 50
-                # Es. Rate 2.0 -> Leva 50 / 2.0 = 25
-                elif calc_mode == mt5.SYMBOL_CALC_MODE_CFDLEVERAGE:
-                    if margin_rate > 0:
-                        real_leverage = acc_lev / margin_rate
+                    # --- FASE B: APPLICAZIONE DEL BLOCCO (MINIMUM RULE) ---
+                    asset_leverage = round(asset_leverage)
+                    final_leverage = min(asset_leverage, acc_lev_cap)
+                    
+                    # --- FASE C: CALCOLO MARGINE MINIMO REALE PER L'HUD ---
+                    tick = mt5.symbol_info_tick(ticker)
+                    price = tick.ask if tick else 0.0
+                    min_lot = info.volume_min
+                    
+                    # Calcolo manuale forzato sul blocco account per allinearsi alla realtà MT5
+                    # Margine = (Prezzo * Lotto * Contract) / LevaFinale
+                    if price > 0 and final_leverage > 0:
+                        notional_min = price * min_lot * info.trade_contract_size
+                        margin_min_val = notional_min / final_leverage
                     else:
-                        real_leverage = acc_lev
+                        margin_min_val = 0.0
 
-                # CASO 3: Forex (Standard)
-                elif calc_mode == mt5.SYMBOL_CALC_MODE_FOREX:
-                    real_leverage = acc_lev
-                
-                # CASO 4: Futures / Exchange Stocks
-                # Spesso margine fisso o 1:1
-                elif calc_mode == mt5.SYMBOL_CALC_MODE_EXCH_STOCKS:
-                    real_leverage = 1.0 / margin_rate if margin_rate > 0 else 1.0
+                    print(f"   > Leva Finale: 1:{final_leverage} | Margine Min HUD: ${margin_min_val:.2f}")
 
-                # --- SANITIZZAZIONE ---
-                # 1. Arrotondamento (49.9 -> 50)
-                real_leverage = round(real_leverage)
-                
-                # 2. Tetto Account
-                # La leva finale non può mai superare quella dell'account
-                final_leverage = min(real_leverage, acc_lev)
-                
-                if final_leverage < 1: final_leverage = 1.0
-
-                # Debug nel terminale per conferma
-                print(f"🕵️ {ticker} | Mode: {calc_mode} | Rate: {margin_rate} | Leva Calc: {real_leverage}")
-
-                return {
-                    "leverage": final_leverage,
-                    "contract_size": info.trade_contract_size,
-                    "tick_value": info.trade_tick_value,
-                    "min_lot": info.volume_min,
-                    "max_lot": info.volume_max,
-                    "step_lot": info.volume_step,
-                    "digits": info.digits
-                }
-
-        # 2. MODO SIMULAZIONE
-        specs_db = {
-            "NQ100": {"leverage": 20.0, "contract_size": 20.0},
-            "BTCUSD": {"leverage": 2.0, "contract_size": 1.0},
-            "EURUSD": {"leverage": 30.0, "contract_size": 100000.0},
-            "NVDA":   {"leverage": 10.0, "contract_size": 1.0},
-        }
-        clean_ticker = ticker.split('.')[0]
-        found_key = next((k for k in specs_db if k in clean_ticker), None)
-        
-        default_spec = {"leverage": 20.0, "contract_size": 1.0}
-        
-        # FIX PYLANCE: Sostituiamo .get() con if/else
-        # Se found_key è None, .get(None) rompe le scatole a Pylance.
-        if found_key:
-            base_spec = specs_db[found_key]
-        else:
-            base_spec = default_spec
-        
-        base_spec["min_lot"] = 0.01
-        base_spec["step_lot"] = 0.01
-        base_spec["digits"] = 2
-        
-        return base_spec
+                    return {
+                        "leverage": float(final_leverage),
+                        "contract_size": info.trade_contract_size,
+                        "tick_value": info.trade_tick_value,
+                        "min_lot": min_lot,
+                        "max_lot": info.volume_max,      # Aggiunto
+                        "step_lot": info.volume_step,    # Aggiunto per lo step dell'input
+                        "margin_min": float(margin_min_val),
+                        "digits": info.digits
+                    }
+            return None
 
     def get_latest_tick(self, ticker):
         if self.is_connected:
