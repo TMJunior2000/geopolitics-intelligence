@@ -142,198 +142,229 @@ with col_search:
 
 if selected_view == "🦅 DASHBOARD":
     
-    # === A. KAIROS TRADING HUD (GLASSMORPHISM) ===
+    # ==============================================================================
+    # 0. GLOBAL CSS FIXES (ALLINEAMENTO PIXEL-PERFECT)
+    # ==============================================================================
+    st.markdown("""
+    <style>
+        /* --- 1. STILE ETICHETTE "OXYGEN" --- */
+        /* Targettiamo il testo p dentro le label dei widget orizzontali */
+        div[data-testid="stHorizontalBlock"] [data-testid="stWidgetLabel"] p {
+            font-size: 10px !important;
+            color: #94A3B8 !important;
+            font-weight: 700 !important;
+            text-transform: uppercase !important;
+            letter-spacing: 1px !important;
+            font-family: 'Inter', sans-serif !important;
+            margin-bottom: 0px !important;
+        }
+        
+        /* Forza altezza minima uguale per tutte le label (allinea Selectbox e Input) */
+        div[data-testid="stHorizontalBlock"] [data-testid="stWidgetLabel"] {
+            min-height: 20px !important;
+            margin-bottom: 5px !important;
+            display: flex !important;
+            align-items: end !important; /* Allinea il testo in basso */
+        }
+
+        /* --- 2. ALTEZZE INPUT UNIFORMI --- */
+        div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+        div[data-testid="stNumberInput"] div[data-baseweb="input"],
+        div[data-testid="stNumberInput"] input {
+            height: 42px !important;
+            min-height: 42px !important;
+            border-radius: 8px !important;
+        }
+
+        /* --- 3. FIX ALLINEAMENTO BOTTONE VERIFY --- */
+        /* Aggiunge margine sopra il bottone pari all'altezza della label + gap */
+        div[data-testid="stHorizontalBlock"] button[kind="primary"] {
+            height: 42px !important;
+            min-height: 42px !important;
+            border-radius: 8px !important;
+            margin-top: 25px !important; /* <--- QUESTO LO ALLINEA PERFETTAMENTE */
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+        }
+
+        /* Container HUD */
+        .hud-container { 
+            border: 1px solid rgba(46, 204, 113, 0.2); 
+            border-radius: 12px; 
+            overflow: hidden; 
+            margin-bottom: 25px; 
+            background: rgba(15, 23, 42, 0.6); 
+            backdrop-filter: blur(20px); 
+            box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5); 
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # ==============================================================================
+    # 1. ZONE: KAIROS HUD (HTML Piatto)
+    # ==============================================================================
     acct = st.session_state.broker.get_account_info()
     margin_class = "money" if acct['free_margin'] > 100 else "risk" if acct['free_margin'] > 50 else "danger"
+    open_positions = st.session_state.broker.get_positions()
     
-    st.markdown(f"""
-    <div class="trading-card-container">
-        <div class="trading-header" style="display:flex; justify-content:space-between; align-items:center;">
-            <span>🛡️ KAIROS TRADING HUD</span>
-            <span style="font-size: 12px; opacity: 0.7; font-family: monospace;">ACC: {acct.get('login', 'N/A')}</span>
+    # HEADER
+    oxy_color = '#EF4444' if margin_class == 'danger' else '#F8FAFC'
+    html_header = (
+        f'<div style="background: rgba(15, 23, 42, 0.9); padding: 15px 20px; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: space-between;">'
+        f'<div style="display:flex; align-items:center;">'
+        f'<span style="font-size: 10px; color: #94A3B8; margin-right: 6px; font-weight: 700; letter-spacing: 1px;">BALANCE</span>'
+        f'<span style="font-family: \'Space Grotesk\'; font-weight: 700; color: #F8FAFC; font-size: 18px; margin-right: 20px;">${acct["balance"]:,.2f}</span>'
+        f'<span style="border-left:1px solid #334155; height:16px; margin:0 15px;"></span>'
+        f'<span style="font-size: 10px; color: #94A3B8; margin-right: 6px; font-weight: 700; letter-spacing: 1px;">EQUITY</span>'
+        f'<span style="font-family: \'Space Grotesk\'; font-weight: 700; color: #2ECC71; font-size: 18px; margin-right: 20px; text-shadow: 0 0 15px rgba(46,204,113,0.2);">${acct["equity"]:,.2f}</span>'
+        f'<span style="border-left:1px solid #334155; height:16px; margin:0 15px;"></span>'
+        f'<span style="font-size: 10px; color: #94A3B8; margin-right: 6px; font-weight: 700; letter-spacing: 1px;">OXYGEN</span>'
+        f'<span style="font-family: \'Space Grotesk\'; font-weight: 700; font-size: 18px; color: {oxy_color}">${acct["free_margin"]:,.0f}</span>'
+        f'</div>'
+        f'<div><span style="font-family: monospace; font-size: 11px; color: #475569; background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 4px;">ID: {acct.get("login", "N/A")}</span></div>'
+        f'</div>'
+    )
+
+    # BODY
+    html_body = ""
+    if not open_positions:
+        html_body = (
+            '<div style="padding: 15px 20px; background: rgba(2, 6, 23, 0.4); min-height: 50px; display: flex; align-items: center;">'
+            '<div style="color: #64748B; font-size: 13px; display: flex; align-items: center; font-style: italic;">'
+            '<span style="font-size: 18px; margin-right: 10px; opacity: 0.7;">💤</span>'
+            '<span>Nessuna posizione aperta. Flat Market.</span>'
+            '</div></div>'
+        )
+    else:
+        traffic_signals = st.session_state.strategy.analyze_portfolio(df) if not df.empty else []
+        cards = ""
+        for pos in open_positions:
+            sig = next((s for s in traffic_signals if s['ticker'] == pos['symbol']), None)
+            color = "#2ECC71" if sig and sig['status'] == "GREEN" else "#EF4444" if sig and sig['status'] == "RED" else "#94A3B8"
+            bg_color = f"{color}10"
+            pnl_color = "#2ECC71" if pos['profit'] >= 0 else "#EF4444"
+            
+            cards += (
+                f'<div style="border-left: 3px solid {color}; background: linear-gradient(90deg, {bg_color} 0%, rgba(0,0,0,0) 100%); padding: 8px 12px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.05); min-width: 140px;">'
+                f'<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">'
+                f'<span style="font-weight:700; font-size:13px; color: #F1F5F9;">{pos["symbol"]}</span>'
+                f'<span style="font-size:9px; background:rgba(255,255,255,0.1); padding:1px 4px; border-radius:3px; color:#CBD5E1;">{pos["type"]}</span>'
+                f'</div>'
+                f'<div style="font-size:14px; font-family:monospace; font-weight:700; color: {pnl_color};">{pos["profit"]:+.2f} $</div>'
+                f'</div>'
+            )
+        html_body = f'<div style="padding: 15px 20px; background: rgba(2, 6, 23, 0.4); display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">{cards}</div>'
+
+    st.markdown(f'<div class="hud-container">{html_header}{html_body}</div>', unsafe_allow_html=True)
+
+    # ==============================================================================
+    # 2. ZONE: EXECUTION BAR (ALLINEAMENTO FIX)
+    # ==============================================================================
+    
+    st.markdown("""
+    <div class="hud-container" style="padding: 20px; background: rgba(15, 23, 42, 0.6);">
+        <div style="display:flex; align-items:center; margin-bottom: 20px;">
+            <span style="color:#F59E0B; margin-right: 10px; font-size: 18px;">⚡</span>
+            <span style="font-family:'Space Grotesk'; font-weight:700; color:#F8FAFC; font-size:16px; letter-spacing: 0.5px;">EXECUTION DECK</span>
         </div>
-        <div class="metrics-grid">
-            <div class="metric-box">
-                <div class="metric-label">💰 Balance</div>
-                <div class="metric-value">${acct['balance']:,.2f}</div>
-            </div>
-            <div class="metric-box">
-                <div class="metric-label">📈 Equity</div>
-                <div class="metric-value money">${acct['equity']:,.2f}</div>
-            </div>
-            <div class="metric-box">
-                <div class="metric-label">🔒 Used Margin</div>
-                <div class="metric-value">${acct['used_margin']:,.2f}</div>
-            </div>
-            <div class="metric-box" style="border-color: rgba(255,255,255,0.1);">
-                <div class="metric-label">🫁 Free Oxygen</div>
-                <div class="metric-value {margin_class}">${acct['free_margin']:,.2f}</div>
-            </div>
+    """, unsafe_allow_html=True)
+
+    live_assets = st.session_state.broker.get_all_available_tickers()
+    live_assets.sort()
+    
+    default_index = 0
+    if selected_asset_search and selected_asset_search != "TUTTI" and selected_asset_search in live_assets:
+        default_index = live_assets.index(selected_asset_search)
+    
+    # ----------------------------------------------------------------------
+    # FIX LAYOUT COLONNE
+    # ----------------------------------------------------------------------
+    c1, c2, c3, c4, c5, c6 = st.columns([1.8, 0.8, 1, 1, 1, 1.2], gap="small")
+    
+    specs = None
+    tick_info = None
+    
+    with c1:
+        # ASSET
+        target_ticker = st.selectbox("ASSET", live_assets, index=default_index)
+        if target_ticker:
+            specs = st.session_state.broker.get_asset_specs(target_ticker)
+            tick_info = st.session_state.broker.get_latest_tick(target_ticker)
+    
+    current_price = float(tick_info['price']) if tick_info else 0.0
+    
+    with c2:
+        min_l = float(specs['min_lot']) if specs else 0.01
+        step_l = float(specs.get('step_lot', 0.01)) if specs else 0.01
+        selected_size = st.number_input("SIZE (LOTS)", min_value=min_l, value=min_l, step=step_l, format="%.2f")
+    
+    with c3:
+        entry_price = st.number_input("ENTRY PRICE", value=current_price, step=0.01, format="%.2f")
+        
+    with c4:
+        sl_val = entry_price * 0.99
+        sl_input = st.number_input("STOP LOSS", value=sl_val, format="%.2f")
+        
+    with c5:
+        tp_val = entry_price * 1.02
+        tp_input = st.number_input("TAKE PROFIT", value=tp_val, format="%.2f")
+
+    # [CALCOLI DI BACKEND QUI - Invariati...]
+    risk_msg, profit_msg, margin_req, leva_str = "N/A", "N/A", 0.0, "N/A"
+    if specs:
+        contract = specs['contract_size']
+        lev = specs.get('leverage', 50)
+        leva_str = f"1:{lev:.0f}"
+        notional = entry_price * selected_size * contract
+        margin_req = notional / lev if lev else 0
+        dist_sl = entry_price - sl_input
+        money_sl = abs(dist_sl) * selected_size * contract
+        pct_sl = (abs(dist_sl)/entry_price)*100 if entry_price else 0
+        dist_tp = tp_input - entry_price
+        money_tp = abs(dist_tp) * selected_size * contract
+        rr = money_tp / money_sl if money_sl > 0 else 0
+        risk_color = "#EF4444" if money_sl > (acct['equity']*0.02) else "#94A3B8"
+        risk_msg = f"<span style='color:{risk_color}'>-${money_sl:.1f} ({pct_sl:.1f}%)</span>"
+        profit_msg = f"<span style='color:#2ECC71'>+${money_tp:.1f} (R:{rr:.1f})</span>"
+
+    with c6:
+        # BOTTONE PULITO (L'allineamento è gestito dal CSS margin-top: 25px)
+        if st.button("VERIFY", type="primary", use_container_width=True):
+            check = st.session_state.risk_engine.check_trade_feasibility(target_ticker, "LONG", entry_price, sl_input)
+            if check['allowed']:
+                st.toast(f"✅ Trade SAFE! Max Lots: {check['max_lots']}", icon="🛡️")
+            else:
+                st.toast(f"❌ REJECTED: {check['reason']}", icon="💀")
+
+    st.markdown(f"""
+        <div style="display:flex; justify-content: space-between; align-items: center; margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.05); font-size: 11px; font-family: monospace; color: #64748B;">
+            <div>MARGIN: <span style="color: #F8FAFC; font-weight:700;">${margin_req:.2f}</span></div>
+            <div>RISK: {risk_msg}</div>
+            <div>TARGET: {profit_msg}</div>
+            <div style="color: #F59E0B; font-weight:700;">LEVA: {leva_str}</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    col_desk_L, col_desk_R = st.columns([1.3, 1.2])
-
-    # --- COLONNA SINISTRA: POSIZIONI & SEGNALI ---
-    with col_desk_L:
-        st.markdown("""
-        <div class="trading-card-container" style="min-height: 420px;">
-            <div class="trading-header">
-                <span>🚦 LIVE POSITIONS & SIGNALS</span>
-            </div>
-        """, unsafe_allow_html=True)
-
-        open_positions = st.session_state.broker.get_positions()
-        
-        if not open_positions:
-            st.info("😴 Nessuna posizione aperta.")
-        else:
-            # Qui potresti chiamare la strategia sui dati in tempo reale se necessario
-            traffic_signals = st.session_state.strategy.analyze_portfolio(df) if not df.empty else []
-            
-            # Mostra posizioni esistenti (mockup visuale basato sui segnali)
-            if not traffic_signals:
-                st.write("Posizioni aperte presenti (Visualizzazione grezza):")
-                st.dataframe(open_positions)
-            else:
-                for signal in traffic_signals:
-                    color_hex = "#2ECC71" if signal['status'] == "GREEN" else "#F59E0B" if signal['status'] == "YELLOW" else "#EF4444"
-                    bg_hex = f"{color_hex}15"
-                    st.markdown(f"""
-                    <div style="background:{bg_hex}; border-left: 4px solid {color_hex}; padding: 10px; border-radius: 6px; margin-bottom: 10px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <span style="font-weight:700; color:#FFF; font-size:16px;">{signal['ticker']}</span>
-                            <span style="font-size:10px; background:#0F172A; padding:2px 6px; border-radius:4px; color:{color_hex}; border:1px solid {color_hex};">{signal['status']}</span>
-                        </div>
-                        <div style="font-size:12px; color:#CBD5E1; margin-top:5px;"><i>"{signal['msg']}"</i></div>
-                    </div>
-                    """, unsafe_allow_html=True)
-        
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    # --- COLONNA DESTRA: CALCOLATORE DINAMICO (FIX APPLICATO) ---
-    # --- COLONNA DESTRA: CALCOLATORE DINAMICO (CORRETTO) ---
-    with col_desk_R:
-        st.markdown("""
-        <div class="trading-card-container" style="min-height: 420px; border-color: rgba(46, 204, 113, 0.3);">
-            <div class="trading-header">
-                <span>📊 SMART MARGIN CALCULATOR</span>
-            </div>
-        """, unsafe_allow_html=True)
-
-        # 1. Recupero Lista Asset Disponibili
-        live_assets = st.session_state.broker.get_all_available_tickers()
-        live_assets.sort()
-        
-        # 2. Logica Selezione Sicura
-        default_index = 0
-        current_search = selected_asset_search if selected_asset_search != "TUTTI" else None
-        if current_search and current_search in live_assets:
-            try:
-                default_index = live_assets.index(current_search)
-            except ValueError:
-                default_index = 0
-        
-        target_ticker = st.selectbox(
-            "Asset Selection", 
-            live_assets, 
-            index=default_index, 
-            key="hud_ticker_select"
-        )
-
-        # 3. Recupero Dati Specifica Asset
-        specs = st.session_state.broker.get_asset_specs(target_ticker)
-        tick_info = st.session_state.broker.get_latest_tick(target_ticker)
-
-        if specs and tick_info:
-            # Conversione Timestamp
-            last_time = datetime.datetime.fromtimestamp(tick_info['timestamp']).strftime('%H:%M:%S')
-            
-            # Layout Input: Dividiamo in Size e Prezzo
-            c_input_1, c_input_2 = st.columns(2)
-            
-            # A. INPUT SIZE
-            with c_input_1:
-                min_lot = specs.get('min_lot', 0.01)
-                step_lot = specs.get('step_lot', 0.01)
-                selected_size = st.number_input(
-                    "Volume (Lots)",
-                    min_value=float(min_lot),
-                    value=float(min_lot),
-                    step=float(step_lot),
-                    format="%.2f"
-                )
-
-            # B. INPUT ENTRY PRICE (Ripristinato)
-            # Permette di modificare il prezzo per simulazioni, defaultando al prezzo attuale
-            with c_input_2:
-                entry_price = st.number_input(
-                    "Entry Price ($)",
-                    value=float(tick_info['price']),
-                    step=0.01,
-                    format="%.2f"
-                )
-            
-            # C. CALCOLO MARGINE SUI DATI INSERITI
-            # Valore Nozionale = Prezzo Inserito * Lotti * Dimensione Contratto
-            notional = entry_price * selected_size * specs['contract_size']
-            
-            # Margine = Nozionale / Leva
-            leverage = specs.get('leverage', 50.0)
-            required_margin = notional / leverage if leverage > 0 else 0
-            
-            # Impatto % sull'Equity
-            impact_pct = (required_margin / acct['equity'] * 100) if acct['equity'] > 0 else 0
-            impact_color = "#EF4444" if impact_pct > 50 else "#F59E0B" if impact_pct > 20 else "#2ECC71"
-
-            # D. VISUALIZZAZIONE RISULTATO
-            st.markdown(f"""
-            <div style="background:rgba(46,204,113,0.05); border:1px solid rgba(46,204,113,0.2); padding:15px; border-radius:10px; text-align:center; margin-top:10px;">
-                <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
-                     <span style="font-size:9px; color:#64748B;">LAST UPDATE: {last_time}</span>
-                     <span style="font-size:9px; color:#64748B;">LEV: 1:{int(leverage)}</span>
-                </div>
-                <div style="font-size:10px; color:#94A3B8; letter-spacing:1px; margin-bottom:2px;">REQUIRED MARGIN</div>
-                <div style="font-size:26px; font-weight:700; color:#2ECC71; font-family:'Space Grotesk', monospace;">${required_margin:,.2f}</div>
-                <div style="font-size:11px; color:{impact_color}; margin-top:4px; font-weight:600;">IMPACT: {impact_pct:.1f}%</div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # E. RISK ENGINE CHECK
-            st.markdown("---")
-            c1, c2 = st.columns([1, 1.5])
-            with c1: 
-                # Input Stop Loss
-                sl_input = st.number_input("Stop Loss ($)", value=0.0, format="%.2f")
-            with c2: 
-                st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("🧮 VERIFY TRADE", use_container_width=True):
-                    # Passiamo l'entry_price manuale al risk engine
-                    res = st.session_state.risk_engine.check_trade_feasibility(target_ticker, "LONG", entry_price, sl_input)
-                    if res.get('allowed', False): 
-                        st.success(f"✅ SIZE OK (Max: {res.get('max_lots', 0)})")
-                    else: 
-                        st.error(f"❌ {res.get('reason', 'Denied')}")
-
-        else:
-            st.warning("Dati asset non disponibili.")
-
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    # === B. FEED CONTENUTI INTELLIGENTI ===
+    # ==============================================================================
+    # 3. ZONE: INTELLIGENCE FEED
+    # ==============================================================================
     if not df.empty:
+        st.markdown(f"""
+        <div style="margin-top: 40px; margin-bottom: 20px; display:flex; align-items:center;">
+            <span style="font-size:20px; margin-right:10px;">🔥</span>
+            <h3 style="margin:0; font-size: 22px;">Daily Briefing <span style="font-size: 14px; color: #64748B; font-weight: 400; margin-left: 10px;">{pd.Timestamp.now().strftime('%d %B')}</span></h3>
+        </div>
+        """, unsafe_allow_html=True)
+
         if selected_asset_search and selected_asset_search != "TUTTI":
-            st.markdown(f"### 🔎 Risultati per: <span style='color:#2ECC71'>{selected_asset_search}</span>", unsafe_allow_html=True)
             asset_df = df[df['asset_ticker'] == selected_asset_search].copy()
             if not asset_df.empty:
-                # Usa il generatore di card HTML
                 cards_html = "".join([_generate_html_card(row) for _, row in asset_df.iterrows()])
                 st.markdown(f'<div class="worldy-grid">{cards_html}</div>', unsafe_allow_html=True)
             else:
-                st.info("Nessuna news recente per questo asset.")
+                st.info(f"Nessuna news recente per {selected_asset_search}.")
         else:
-            # Vista Default: Carosello + Tutte le sezioni
             render_carousel(df)
             render_all_assets_sections(df)
 
