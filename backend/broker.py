@@ -2,6 +2,9 @@ import pandas as pd
 import streamlit as st
 import time
 import MetaTrader5 as mt5
+import numpy as np
+import MetaTrader5 as mt5
+from datetime import datetime
 
 class TradingAccount:
     def __init__(self, balance=200.0):
@@ -165,3 +168,45 @@ class TradingAccount:
             if tick:
                 return {"price": tick.ask, "timestamp": tick.time}
         return {"price": 100.0, "timestamp": int(time.time())}
+    
+    def get_candles(self, ticker, timeframe="H4", n_candles=500):
+            """
+            Scarica candele per il grafico.
+            timeframe: "H4" o "M15"
+            """
+            # Mappa stringa -> costante MT5
+            tf_map = {
+                "H4": mt5.TIMEFRAME_H4,
+                "M15": mt5.TIMEFRAME_M15
+            }
+            mt5_tf = tf_map.get(timeframe, mt5.TIMEFRAME_H4) # Default H4
+
+            if self.is_connected:
+                if not mt5.symbol_select(ticker, True):
+                    return pd.DataFrame()
+                
+                # Scarica tassi
+                rates = mt5.copy_rates_from_pos(ticker, mt5_tf, 0, n_candles)
+                
+                if rates is not None and len(rates) > 0:
+                    df = pd.DataFrame(rates)
+                    df['time'] = pd.to_datetime(df['time'], unit='s')
+                    df = df.sort_values('time').reset_index(drop=True)
+                    return df[['time', 'open', 'high', 'low', 'close']]
+                else:
+                    return pd.DataFrame()
+
+            # --- SIMULAZIONE OFFLINE ---
+            # Adatta la frequenza dei dati finti
+            freq_map = {"H4": "4h", "M15": "15min"}
+            freq = freq_map.get(timeframe, "4h")
+            
+            dates = pd.date_range(end=datetime.now(), periods=n_candles, freq=freq)
+            df = pd.DataFrame(index=dates)
+            df['time'] = df.index
+            # ... logica random walk identica a prima ...
+            df['close'] = 100 + np.random.randn(n_candles).cumsum()
+            df['open'] = df['close'].shift(1).fillna(100)
+            df['high'] = df[['open', 'close']].max(axis=1) + abs(np.random.randn(n_candles))
+            df['low'] = df[['open', 'close']].min(axis=1) - abs(np.random.randn(n_candles))
+            return df[['time', 'open', 'high', 'low', 'close']]
