@@ -1,85 +1,88 @@
 import pandas as pd
 import numpy as np
 
-def detect_fvgs(df: pd.DataFrame) -> list:
+def detect_fvgs(df: pd.DataFrame):
     """
-    Rileva FVG e determina il range temporale di esistenza.
-    Restituisce dati pronti per il rendering a "rettangoli".
+    Rileva i Fair Value Gaps (FVG) e calcola la reale percentuale di mitigazione.
     """
-    if df.empty or len(df) < 5:
+    if df.empty or len(df) < 3:
         return []
 
-    # Usiamo array numpy per velocità
-    highs = df['high'].values
-    lows = df['low'].values
-    
-    # --- FIX QUI SOTTO: Aggiunto .values per renderlo un array NumPy ---
-    # Senza .values, Pandas cerca l'indice "-1" (che non esiste) invece dell'ultimo elemento.
-    times = (df['time'].astype(np.int64) // 10**9).values 
+    # ASSICURIAMO L'ORDINE CRONOLOGICO (Fondamentale per la mitigazione)
+    df = df.sort_values('time').reset_index(drop=True)
     
     fvgs = []
-    n = len(df)
+    # Analisi a finestra mobile di 3 candele
+    for i in range(len(df) - 2):
+        c0, c1, c2 = df.iloc[i], df.iloc[i+1], df.iloc[i+2]
+        
+        fvg = None
+        # --- IDENTIFICAZIONE GAP ---
+        # BULLISH: Massimo candela 1 < Minimo candela 3
+        if float(c0['high']) < float(c2['low']):
+            fvg = {
+                'type': 'BULLISH',
+                'top': float(c2['low']),
+                'bottom': float(c0['high']),
+                'start_time': c1['time'].timestamp() if hasattr(c1['time'], 'timestamp') else c1['time']
+            }
+        # BEARISH: Minimo candela 1 > Massimo candela 3
+        elif float(c0['low']) > float(c2['high']):
+            fvg = {
+                'type': 'BEARISH',
+                'top': float(c0['low']),
+                'bottom': float(c2['high']),
+                'start_time': c1['time'].timestamp() if hasattr(c1['time'], 'timestamp') else c1['time']
+            }
 
-    # 1. Rilevamento (Gap tra candela i-2 e i)
-    for i in range(2, n - 1):
-        # BULLISH FVG (Gap tra High[i-2] e Low[i])
-        if lows[i] > highs[i-2]:
-            top = lows[i]
-            bottom = highs[i-2]
-            gap_size = top - bottom
+        if fvg:
+            # --- CALCOLO MITIGAZIONE (REALE) ---
+            # Guardiamo tutte le candele nate DOPO il gap (da i+3 in poi)
+            future_candles = df.iloc[i+3:]
             
-            # Calcolo Mitigazione nel futuro
-            mitigated_idx = -1
-            current_penetration = 0
+            fvg['mitigated_pct'] = 0.0 
+            fvg['is_mitigated'] = False
             
-            for j in range(i + 1, n):
-                # Se il prezzo scende sotto il top, sta mitigando
-                if lows[j] < top:
-                    current_penetration = max(current_penetration, top - lows[j])
-                    # Se tocca il fondo, è mitigato totalmente
-                    if lows[j] <= bottom:
-                        mitigated_idx = j
-                        break
+            if not future_candles.empty:
+                full_range = fvg['top'] - fvg['bottom']
+                
+                if full_range > 0: # Evitiamo divisioni per zero
+                    if fvg['type'] == 'BULLISH':
+                        # Cerchiamo il punto più basso toccato dal prezzo dopo il gap
+                        min_reached = float(future_candles['low'].min())
+                        
+                        if min_reached <= fvg['bottom']: 
+                            fvg['mitigated_pct'] = 100.0
+                        elif min_reached < fvg['top']:
+                            # Il prezzo è entrato nel rettangolo
+                            filled_amount = fvg['top'] - min_reached
+                            fvg['mitigated_pct'] = (filled_amount / full_range) * 100
+                            
+                    else: # BEARISH
+                        # Cerchiamo il punto più alto toccato dal prezzo dopo il gap
+                        max_reached = float(future_candles['high'].max())
+                        
+                        if max_reached >= fvg['top']:
+                            fvg['mitigated_pct'] = 100.0
+                        elif max_reached > fvg['bottom']:
+                            # Il prezzo è entrato nel rettangolo
+                            filled_amount = max_reached - fvg['bottom']
+                            fvg['mitigated_pct'] = (filled_amount / full_range) * 100
+
+            # Arrotondiamo per pulizia
+            fvg['mitigated_pct'] = round(fvg['mitigated_pct'], 2)
+
+            # Filtro: Se il gap è già chiuso al 99%, non lo mandiamo al grafico
+            if fvg['mitigated_pct'] > 99:
+                 continue 
+
+            # Estensione orizzontale nel futuro (per il disegno)
+            last_time = df.iloc[-1]['time']
+            if hasattr(last_time, 'timestamp'):
+                fvg['end_time'] = (last_time + pd.Timedelta(hours=4)).timestamp()
+            else:
+                fvg['end_time'] = last_time + 14400 
             
-            mit_pct = round((current_penetration / gap_size) * 100, 1) if gap_size > 0 else 0
-            
-            fvgs.append({
-                'start_time': times[i-1], # Tempo della candela centrale che crea il gap
-                # Ora times[-1] funzionerà perché times è un array numpy
-                'end_time': times[mitigated_idx] if mitigated_idx != -1 else times[-1],
-                'top': top,
-                'bottom': bottom,
-                'type': 'bullish',
-                'mitigated_pct': min(mit_pct, 100.0),
-                'fully_mitigated': mitigated_idx != -1
-            })
+            fvgs.append(fvg)
 
-        # BEARISH FVG (Gap tra Low[i-2] e High[i])
-        elif highs[i] < lows[i-2]:
-            top = lows[i-2]
-            bottom = highs[i]
-            gap_size = top - bottom
-
-            mitigated_idx = -1
-            current_penetration = 0
-
-            for j in range(i + 1, n):
-                if highs[j] > bottom:
-                    current_penetration = max(current_penetration, highs[j] - bottom)
-                    if highs[j] >= top:
-                        mitigated_idx = j
-                        break
-            
-            mit_pct = round((current_penetration / gap_size) * 100, 1) if gap_size > 0 else 0
-
-            fvgs.append({
-                'start_time': times[i-1],
-                'end_time': times[mitigated_idx] if mitigated_idx != -1 else times[-1],
-                'top': top,
-                'bottom': bottom,
-                'type': 'bearish',
-                'mitigated_pct': min(mit_pct, 100.0),
-                'fully_mitigated': mitigated_idx != -1
-            })
-
-    return fvgs
+    return fvgs[-20:] # Ritorna solo i più recenti

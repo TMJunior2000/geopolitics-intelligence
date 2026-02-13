@@ -1,5 +1,5 @@
 from typing import List, Dict, Any, Optional, cast
-from supabase import create_client, Client
+from supabase.client import create_client, Client
 from core.config import Config
 
 class DBService:
