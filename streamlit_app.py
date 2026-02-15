@@ -188,14 +188,13 @@ if selected_view == "🦅 DASHBOARD":
             if not candles_df.empty:
                 # 1. Analisi FVG
                 candles_df['time'] = pd.to_datetime(candles_df['time'])
-                fvgs_found = detect_fvgs(candles_df)
-                active_fvgs = [f for f in fvgs_found if f['mitigated_pct'] < 98]
+                fvgs_found_active = detect_fvgs(candles_df)
 
                 # 2. RENDER GRAFICO (SOPRA)
                 render_lightweight_chart(
                     df=candles_df, 
                     ticker=target_ticker, 
-                    fvgs=active_fvgs # Passiamo solo gli FVG
+                    fvgs=fvgs_found_active
                 )
             else:
                 st.warning(f"Dati non disponibili per {target_ticker}")

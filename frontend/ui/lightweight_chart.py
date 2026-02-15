@@ -1,175 +1,211 @@
 import streamlit as st
-import json
 import pandas as pd
-import numpy as np
-import streamlit.components.v1 as components
+import json
+from datetime import datetime
+from lightweight_charts.widgets import StreamlitChart
 
 def render_lightweight_chart(df: pd.DataFrame, ticker: str, fvgs: list | None = None):
     """
-    Renderizza FVG come SFONDO SOLIDO.
-    CORREZIONE: Estende FVG aperti fino all'ultima candela.
-    CORREZIONE: Garantisce visibilità rettangoli 0%.
+    Renderizza il grafico usando la libreria Python ufficiale 'lightweight-charts'.
+    
+    ANALISI CONFLITTO RISOLTA:
+    - Il wrapper converte le date in int64 // 10^9 (Secondi Unix puri).
+    - Ora calcoliamo le chiavi del dizionario 'tooltip_map' ESATTAMENTE allo stesso modo.
+    - Questo garantisce che param.time (JS) trovi sempre il dato corrispondente nel dizionario.
     """
     if df is None or df.empty:
         st.info(f"Nessun dato per {ticker}")
         return
 
-    # --- 1. PREPARAZIONE DATI PREZZO ---
+    # --- 1. PREPARAZIONE DATI & ALLINEAMENTO CHIAVI ---
     df_plot = df.copy()
-    df_plot["time"] = pd.to_datetime(df_plot["time"], errors="coerce")
-    df_plot = df_plot.dropna(subset=["time"]).sort_values("time")
-    df_plot = df_plot.drop_duplicates(subset=["time"], keep='last')
-
-    all_times_array = df_plot['time'].astype(np.int64) // 10**9
-    all_times_list = all_times_array.tolist()
+    if 'date' in df_plot.columns:
+        df_plot = df_plot.rename(columns={'date': 'time'})
     
-    ohlc_data = df_plot[['open', 'high', 'low', 'close']].copy()
-    ohlc_data['time'] = all_times_array
-    ohlc_data_json = json.dumps(ohlc_data.to_dict(orient='records'))
+    df_plot['time'] = pd.to_datetime(df_plot['time'])
+    df_plot = df_plot.sort_values('time').drop_duplicates(subset=['time'], keep='last')
     
-    safe_id = f"chart_{ticker.replace('.', '_').replace('/', '_').replace(':', '_')}"
+    # [FIX CRITICO] Creiamo una colonna chiave identica a quella usata internamente dalla libreria
+    # La libreria fa: df['time'].astype('int64') // 10**9
+    # Facciamo lo stesso per assicurarci che le chiavi coincidano.
+    df_plot['unix_key'] = df_plot['time'].astype('int64') // 10**9
+    
+    # Calcolo EMA 50
+    df_plot['EMA 50'] = df_plot['close'].rolling(window=50).mean()
+    
+    # --- 2. CONFIGURAZIONE GRAFICO ---
+    # Larghezza 1600 per Desktop Wide
+    chart = StreamlitChart(width=1600, height=500, toolbox=True)
+    
+    chart.layout(background_color='#0B0F19', text_color='#94A3B8', font_size=12, font_family='Inter')
+    chart.grid(vert_enabled=True, horz_enabled=True, color='rgba(255, 255, 255, 0.05)', style='solid')
+    
+    chart.candle_style(
+        up_color='#22C55E', down_color='#EF4444',
+        border_up_color='#22C55E', border_down_color='#EF4444',
+        wick_up_color='#22C55E', wick_down_color='#EF4444'
+    )
+    
+    chart.legend(visible=True, ohlc=True, percent=True, lines=True)
+    
+    # Topbar
+    chart.topbar.textbox('symbol', ticker)
+    current_time = datetime.now().strftime('%H:%M')
+    chart.topbar.textbox('clock', current_time, align='right')
 
-    # --- 2. GENERAZIONE DATI FVG ---
-    box_data_bull = []
-    box_data_bear = []
-    box_data_mitigated = []
-    markers = []
+    # --- 3. CARICAMENTO DATI ---
+    chart.set(df_plot)
+    if 'volume' in df_plot.columns:
+        chart.volume_config(scale_margin_top=0.8)
 
+    # --- 4. EMA (NO PALLINO) ---
+    line = chart.create_line(name='EMA 50', color='#3B82F6', width=2, price_line=False)
+    chart.run_script(f'{line.id}.series.applyOptions({{crosshairMarkerVisible: false}})')
+    line.set(df_plot[['time', 'EMA 50']].dropna())
+
+    # --- 5. DISEGNO FVG E CREAZIONE DIZIONARIO DATI ---
+    tooltip_map = {}
+    
     if fvgs:
-        time_to_idx = {t: i for i, t in enumerate(all_times_list)}
-        last_chart_idx = len(all_times_list) - 1 # Indice ultima candela visibile
-
+        # Usiamo i dati del DataFrame già calcolati con la chiave corretta
+        # Creiamo un dizionario di accesso rapido: unix_key -> time (datetime)
+        time_lookup = dict(zip(df_plot['unix_key'], df_plot['time']))
+        # Lista di tutte le chiavi Unix disponibili nel grafico
+        all_unix_keys = df_plot['unix_key'].tolist()
+        last_time = df_plot['time'].iloc[-1]
+        
         for fvg in fvgs:
+            pct = fvg.get('mitigated_pct', 0)
+            pts = fvg.get('points_to_fill', 0)
+            
             try:
-                start_t = int(fvg['start_time'])
-                end_t = int(fvg['end_time'])
-                
-                # --- CALCOLO PERCENTUALE ---
-                pct = fvg.get('mitigated_pct', 0.0)
-                if pct is None: pct = 0.0
-                is_fully_mitigated = pct >= 99
-
-                # --- 1. LOGICA DI ESTENSIONE (FIX MANCATA ESTENSIONE) ---
-                start_idx = next((i for t, i in time_to_idx.items() if t >= start_t), 0)
-                
-                if is_fully_mitigated:
-                    # Se è chiuso, si ferma dove è stato chiuso
-                    end_idx = next((i for t, i in time_to_idx.items() if t >= end_t), last_chart_idx)
+                # Gestione start_time: se arriva float, lo trattiamo come tale
+                raw_start = fvg['start_time']
+                if isinstance(raw_start, (int, float)):
+                    # Assumiamo sia già in secondi se < 3000000000, altrimenti ms
+                    start_unix = int(raw_start) if raw_start < 3000000000 else int(raw_start / 1000)
+                    start_t = pd.to_datetime(start_unix, unit='s')
                 else:
-                    # SE È APERTO (< 99%), FORZIAMO ALLA FINE DEL GRAFICO
-                    end_idx = last_chart_idx 
-                
-                # Evitiamo errori se gli indici sono invertiti
-                if start_idx > end_idx: start_idx = end_idx
-
-                # --- 2. LOGICA PREZZO (FIX RETTANGOLO INVISIBILE) ---
-                raw_top = float(fvg['top'])
-                raw_bottom = float(fvg['bottom'])
-                # Garantiamo che top sia il massimo e bottom il minimo (fix altezza negativa)
-                top = max(raw_top, raw_bottom)
-                bottom = min(raw_top, raw_bottom)
-                
-                # Tipo FVG
-                is_bullish = (fvg['type'].upper() == 'BULLISH')
-
-                # --- MARKER (SOLO TESTO %) ---              
-                markers.append({
-                    'time': all_times_list[start_idx],
-                    'position': 'belowBar' if is_bullish else 'aboveBar',
-                    'color': '#64748B' if is_fully_mitigated else ('#2ECC71' if is_bullish else '#EF4444'),
-                    'shape': 'circle',
-                    'text': f"{pct:.0f}%", # Es. "0%", "3%"
-                    'size': 0 # Nasconde pallino
-                })
-
-                # --- CREAZIONE RETTANGOLO (SFONDO) ---
-                for i in range(start_idx, end_idx + 1):
-                    t = all_times_list[i]
-                    box_candle = {'time': t, 'open': top, 'high': top, 'low': bottom, 'close': bottom}
-
-                    if is_fully_mitigated:
-                        box_data_mitigated.append(box_candle)
-                    elif is_bullish:
-                        box_data_bull.append(box_candle)
-                    else:
-                        box_data_bear.append(box_candle)
-
-            except Exception as e:
-                # print(f"Errore FVG: {e}") 
+                    start_t = pd.to_datetime(raw_start)
+                    start_unix = int(start_t.timestamp())
+            except:
                 continue
 
-    def clean_and_dump(data):
-        if not data: return "[]"
-        unique_data = {x['time']: x for x in data}
-        d_sorted = sorted(unique_data.values(), key=lambda item: item['time'])
-        return json.dumps(d_sorted)
+            # Colori
+            if fvg['type'] == 'BULLISH':
+                border_color = 'rgba(34, 197, 94, 0.4)'
+                fill_color = 'rgba(34, 197, 94, 0.12)'
+                label_html = "<span style='color:#2ECC71; font-weight:bold;'>🟢 BULLISH FVG</span>"
+            else:
+                border_color = 'rgba(239, 68, 68, 0.4)'
+                fill_color = 'rgba(239, 68, 68, 0.12)'
+                label_html = "<span style='color:#EF4444; font-weight:bold;'>🔴 BEARISH FVG</span>"
 
-    json_bull = clean_and_dump(box_data_bull)
-    json_bear = clean_and_dump(box_data_bear)
-    json_mit = clean_and_dump(box_data_mitigated)
-    markers_json = json.dumps(markers)
+            # Disegna Box
+            chart.box(
+                start_time=start_t,
+                start_value=fvg['top'],
+                end_time=last_time,
+                end_value=fvg['bottom'],
+                color=border_color,
+                fill_color=fill_color,
+                width=1,
+                style='solid'
+            )
+            
+            # --- POPOLAZIONE DATI TOOLTIP ---
+            info_text = f"""
+            <div style="font-size:11px; margin-bottom:4px; color:#94A3B8; text-transform:uppercase; letter-spacing:1px;">Market Structure</div>
+            <div style="font-size:14px; margin-bottom:6px;">{label_html}</div>
+            <div style="display:flex; gap:20px; font-size:13px; color:#E2E8F0; border-top:1px solid rgba(255,255,255,0.1); padding-top:6px;">
+                <span>Mitigated: <b style="color:#F8FAFC">{pct:.0f}%</b></span>
+                <span>To Fill: <b style="color:#F8FAFC">{pts:.1f} pts</b></span>
+            </div>
+            """
+            
+            # Mappiamo SOLO le chiavi unix che sono >= allo start del FVG
+            # Questo evita conversioni di datetime instabili
+            for u_key in all_unix_keys:
+                if u_key >= start_unix:
+                    if u_key not in tooltip_map:
+                        tooltip_map[u_key] = []
+                    # Evita duplicati di testo identico
+                    if info_text not in tooltip_map[u_key]:
+                        tooltip_map[u_key].append(info_text)
 
-    # --- 3. JAVASCRIPT ---
-    chart_html = f"""
-    <style>
-        body {{ margin: 0; padding: 0; overflow: hidden; background-color: #0B0F19; }}
-        #{safe_id} {{ width: 100%; height: 500px; position: absolute; top: 0; left: 0; }}
-        .legend {{
-            position: absolute; left: 12px; top: 12px; z-index: 10;
-            font-family: 'Inter', sans-serif; font-size: 13px;
-            color: #94A3B8; pointer-events: none;
-            background: rgba(15, 23, 42, 0.6);
-            padding: 4px 8px; border-radius: 4px; 
-        }}
-    </style>
-    <div id="{safe_id}"></div>
-    <div class="legend">
-        <span style="color: #F8FAFC; font-weight: 600;">{ticker}</span> • FVG Zones
-    </div>
-    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
-    <script>
-        const container = document.getElementById('{safe_id}');
-        
-        const chart = LightweightCharts.createChart(container, {{
-            width: container.clientWidth, height: 500,
-            layout: {{ background: {{ type: 'solid', color: '#0B0F19' }}, textColor: '#64748B', fontFamily: 'Inter' }},
-            grid: {{ vertLines: {{ color: 'rgba(255, 255, 255, 0.02)' }}, horzLines: {{ color: 'rgba(255, 255, 255, 0.02)' }} }},
-            timeScale: {{ borderColor: 'rgba(255, 255, 255, 0.1)', timeVisible: true }},
-            rightPriceScale: {{ borderColor: 'rgba(255, 255, 255, 0.1)', scaleMargins: {{ top: 0.1, bottom: 0.1 }} }},
-            crosshair: {{ mode: LightweightCharts.CrosshairMode.Normal }},
-        }});
+    # Converti mappa per JS
+    js_tooltip_data = {k: "".join(v) for k, v in tooltip_map.items()}
+    js_payload = json.dumps(js_tooltip_data)
 
-        const addLayer = (data, color) => {{
-            if (data.length === 0) return;
-            const s = chart.addCandlestickSeries({{
-                upColor: color, 
-                downColor: color, 
-                borderVisible: false,   
-                wickVisible: false,     
-                priceLineVisible: false,
-                lastValueVisible: false,
-                crosshairMarkerVisible: false 
-            }});
-            s.setData(data);
-        }};
+    # --- 6. INIEZIONE JAVASCRIPT (HUD FISSO SEMPLIFICATO) ---
+    js_code = f"""
+    // 1. Crea HUD se non esiste
+    let hud = document.getElementById('chart-hud-panel');
+    if (!hud) {{
+        hud = document.createElement('div');
+        hud.id = 'chart-hud-panel';
+        hud.style.position = 'absolute';
+        hud.style.top = '60px'; 
+        hud.style.left = '50%';
+        hud.style.transform = 'translateX(-50%)';
+        hud.style.zIndex = '50';
+        hud.style.display = 'none';
+        hud.style.padding = '10px 18px';
+        hud.style.backgroundColor = 'rgba(15, 23, 42, 0.90)';
+        hud.style.backdropFilter = 'blur(4px)';
+        hud.style.border = '1px solid rgba(51, 65, 85, 0.5)';
+        hud.style.borderRadius = '8px';
+        hud.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+        hud.style.fontFamily = 'Inter, sans-serif';
+        hud.style.pointerEvents = 'none';
+        hud.style.textAlign = 'center';
+        hud.style.minWidth = '200px';
+        document.getElementById('{chart.id}').appendChild(hud);
+    }}
 
-        // Colori SFONDO (Più opachi per essere visibili anche se piccoli)
-        addLayer({json_mit}, 'rgba(148, 163, 184, 0.15)'); // Grigio
-        addLayer({json_bull}, 'rgba(34, 197, 94, 0.35)');  // Verde (aumentata opacità per visibilità)
-        addLayer({json_bear}, 'rgba(239, 68, 68, 0.35)');  // Rosso (aumentata opacità per visibilità)
+    // 2. Dati Python (Key = Unix Timestamp Intero)
+    const hudData = {js_payload};
 
-        // Serie Prezzo
-        const mainSeries = chart.addCandlestickSeries({{ 
-            upColor: '#22C55E', downColor: '#EF4444',
-            borderUpColor: '#22C55E', borderDownColor: '#EF4444',
-            wickUpColor: '#22C55E', wickDownColor: '#EF4444'
-        }});
-        mainSeries.setData({ohlc_data_json});
-        mainSeries.setMarkers({markers_json});
-
-        chart.timeScale().fitContent();
-        new ResizeObserver(() => {{ chart.applyOptions({{ width: container.clientWidth }}); }}).observe(container);
-    </script>
-    """
-    components.html(chart_html, height=500, scrolling=False)
+    // 3. Gestore Eventi
+    const chartObj = window['{chart.id}'].chart;
     
+    chartObj.subscribeCrosshairMove(param => {{
+        if (!param.time || param.point.x < 0) {{
+            hud.style.display = 'none';
+            return;
+        }}
+
+        // --- NORMALIZZAZIONE TOTALE DELLA DATA ---
+        // La libreria restituisce param.time come:
+        // A) Numero (es. 1709234000) -> Intraday
+        // B) Oggetto {{year: 2024, month: 2, day: 15}} -> Daily
+        
+        let timeKey = null;
+
+        if (typeof param.time === 'object') {{
+            // Conversione Oggetto -> Unix Timestamp (Secondi)
+            // Attenzione: month è 1-based nell'oggetto della libreria lightweight-charts standard
+            // Ma Date.UTC vuole month 0-based.
+            const d = new Date(Date.UTC(param.time.year, param.time.month - 1, param.time.day));
+            timeKey = d.getTime() / 1000;
+        }} else {{
+            // E' già un numero
+            timeKey = param.time;
+        }}
+
+        const content = hudData[timeKey];
+
+        if (content) {{
+            hud.innerHTML = content;
+            hud.style.display = 'block';
+        }} else {{
+            hud.style.display = 'none';
+        }}
+    }});
+    """
+    
+    chart.run_script(js_code)
+
+    # --- 7. RENDER ---
+    chart.fit()
+    chart.load()
